@@ -5,6 +5,7 @@ import pytest
 
 from python_swarm.domain_models import FixedClock
 from python_swarm.broker_protocol import (
+    BrokerSessionMode,
     CommandAction,
     MessageType,
     ProtocolCodec,
@@ -59,6 +60,7 @@ def test_hello_exposes_identity_mode_and_permissions_for_fail_closed_authorizati
     assert hello.fields["account_trade_mode"] == "DEMO"
     assert hello.fields["trade_allowed"] is True
     assert hello.fields["expert_allowed"] is True
+    assert hello.fields["session_mode"] == BrokerSessionMode.DEMO.value
 
     ack = ProtocolCodec(TOKEN).decode(fixture_lines()[1])
     assert ack.fields["expected_account_id"] == "123456"
@@ -67,12 +69,30 @@ def test_hello_exposes_identity_mode_and_permissions_for_fail_closed_authorizati
     assert ack.fields["expected_symbol"] == "XAUUSD"
     assert ack.fields["expected_magic"] == 202412
     assert ack.fields["allow_real"] is False
+    assert ack.fields["expected_session_mode"] == BrokerSessionMode.DEMO.value
     assert ack.fields["deal_cursor"] == "0:0"
 
     account = ProtocolCodec(TOKEN).decode(
         fixture_line(MessageType.ACCOUNT_SNAPSHOT)
     )
     assert account.fields["baseline_verified"] is True
+
+
+@pytest.mark.parametrize(
+    ("message_type", "field"),
+    [
+        (MessageType.HELLO, "session_mode"),
+        (MessageType.HELLO_ACK, "expected_session_mode"),
+    ],
+)
+def test_session_mode_is_a_strict_two_value_protocol_enum(message_type, field):
+    raw = json.loads(fixture_line(message_type))
+    for invalid in ("LIVE", "shadow", "", True):
+        mutated = dict(raw, **{field: invalid})
+        with pytest.raises(ProtocolError, match=field):
+            ProtocolCodec(TOKEN).decode(
+                json.dumps(mutated, separators=(",", ":")) + "\n"
+            )
 
 
 def test_pending_order_snapshot_has_atomic_frames_and_string_broker_identity():

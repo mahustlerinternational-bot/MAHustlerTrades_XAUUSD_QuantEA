@@ -6,7 +6,6 @@ import pytest
 from python_swarm.runtime_config import (
     AccountTradeMode,
     ConfigError,
-    ProviderSource,
     RuntimeConfig,
     RuntimeMode,
     load_runtime_config,
@@ -120,22 +119,19 @@ def test_provider_agents_fail_closed_without_real_providers(tmp_path):
         )
 
 
-def test_demo_config_accepts_genuine_enabled_providers_and_all_agents(tmp_path):
+def test_unimplemented_broker_provider_source_is_rejected_before_runtime_construction(
+    tmp_path,
+):
     provider = {"enabled": True, "source": "broker", "max_age_s": 30}
-    config = RuntimeConfig.from_mapping(
-        {
-            **broker_config(tmp_path),
-            "agents": {"enabled": list(range(1, 22))},
-            "providers": {"macro": provider, "intermarket": provider},
-        },
-        environ=BROKER_ENV,
-    )
-    assert config.execution_enabled
-    assert config.mode is RuntimeMode.DEMO
-    assert config.system.expected_account_trade_mode is AccountTradeMode.DEMO
-    assert config.providers.macro.source is ProviderSource.BROKER
-    assert config.is_agent_enabled(10)
-    assert config.is_agent_enabled(12)
+    with pytest.raises(ConfigError, match="no canonical runtime adapter"):
+        RuntimeConfig.from_mapping(
+            {
+                **broker_config(tmp_path),
+                "agents": {"enabled": list(range(1, 22))},
+                "providers": {"macro": provider, "intermarket": provider},
+            },
+            environ=BROKER_ENV,
+        )
 
 
 def test_broker_ipc_is_loopback_only_and_requires_strong_auth(tmp_path):

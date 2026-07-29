@@ -46,5 +46,5 @@ def test_canonical_launcher_works_under_python_optimization():
     assert completed.returncode == 0
     assert completed.stderr == ""
     assert completed.stdout.strip() == (
-        "QUANT-SWARM-XAU 4.0.0-rc1"
+        "QUANT-SWARM-XAU 4.0.0-rc2"
     )

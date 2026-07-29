@@ -15,6 +15,7 @@ from python_swarm.broker_gateway import (
     GatewaySignal,
     GatewaySignalType,
 )
+from python_swarm.broker_protocol import BrokerSessionMode
 from python_swarm.domain_models import (
     BrokerEvent,
     BrokerEventType,
@@ -775,7 +776,7 @@ async def test_gateway_and_runtime_permission_fences_make_shadow_observe_only():
             auth_token="token",
             config_hash="cfg",
             expected=expected,
-            execution_enabled=False,
+            session_mode=BrokerSessionMode.SHADOW,
         ),
         clock=FixedClock(NOW),
     )

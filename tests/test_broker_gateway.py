@@ -15,7 +15,11 @@ from python_swarm.broker_gateway import (
     GatewaySignalType,
     GatewayState,
 )
-from python_swarm.broker_protocol import MessageType, ProtocolCodec
+from python_swarm.broker_protocol import (
+    BrokerSessionMode,
+    MessageType,
+    ProtocolCodec,
+)
 from python_swarm.domain_models import CommandAction
 from python_swarm.execution_service import BrokerPort, OutboundCommand
 from python_swarm.reconciliation import ReconciliationBrokerPort, ReconciliationService
@@ -189,7 +193,11 @@ async def connect_peer(
 ) -> tuple[Peer, object]:
     reader, writer = await asyncio.open_connection("127.0.0.1", gateway.listen_port)
     peer = Peer(reader, writer, clock, epoch)
-    hello = peer.frame(MessageType.HELLO, **(hello_overrides or {}))
+    hello_fields = {
+        "session_mode": gateway.config.session_mode.value,
+        **(hello_overrides or {}),
+    }
+    hello = peer.frame(MessageType.HELLO, **hello_fields)
     await peer.send(hello, fragmented=fragmented_hello)
     ack = await peer.receive()
     return peer, ack
@@ -966,7 +974,7 @@ def test_netting_account_is_rejected_for_execution_but_observable_in_shadow():
     async def shadow_observes() -> None:
         clock = MutableClock()
         gateway = BrokerGateway(
-            config=gateway_config(execution_enabled=False), clock=clock
+            config=gateway_config(session_mode=BrokerSessionMode.SHADOW), clock=clock
         )
         await gateway.start()
         peer = None
@@ -992,6 +1000,80 @@ def test_netting_account_is_rejected_for_execution_but_observable_in_shadow():
 
     asyncio.run(execution_rejected())
     asyncio.run(shadow_observes())
+
+
+def test_shadow_handshake_accepts_disabled_mt5_trading_and_advertises_local_fence():
+    async def scenario() -> None:
+        clock = MutableClock()
+        gateway = BrokerGateway(
+            config=gateway_config(session_mode=BrokerSessionMode.SHADOW), clock=clock
+        )
+        await gateway.start()
+        peer = None
+        try:
+            peer, ack = await connect_peer(
+                gateway,
+                clock,
+                epoch="epoch-observation-only",
+                hello_overrides={
+                    "trade_allowed": False,
+                    "expert_allowed": False,
+                    "session_mode": BrokerSessionMode.SHADOW.value,
+                },
+            )
+            assert ack.fields["status"] == "ACCEPTED"
+            assert (
+                ack.fields["expected_session_mode"]
+                == BrokerSessionMode.SHADOW.value
+            )
+            assert gateway.state is GatewayState.AUTHENTICATED
+        finally:
+            if peer is not None:
+                await peer.close()
+            await gateway.close()
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize(
+    ("gateway_mode", "ea_mode"),
+    [
+        (BrokerSessionMode.SHADOW, BrokerSessionMode.DEMO),
+        (BrokerSessionMode.DEMO, BrokerSessionMode.SHADOW),
+    ],
+)
+def test_gateway_rejects_ea_session_mode_mismatch(gateway_mode, ea_mode):
+    async def scenario() -> None:
+        clock = MutableClock()
+        gateway = BrokerGateway(
+            config=gateway_config(session_mode=gateway_mode),
+            clock=clock,
+        )
+        await gateway.start()
+        peer = None
+        try:
+            peer, ack = await connect_peer(
+                gateway,
+                clock,
+                epoch=f"epoch-mode-{gateway_mode.value.lower()}",
+                hello_overrides={"session_mode": ea_mode.value},
+            )
+            assert ack.fields["status"] == "REJECTED"
+            assert "session_mode" in ack.fields["reason"]
+            assert (
+                ack.fields["expected_session_mode"] == gateway_mode.value
+            )
+            violation = await signal_of(
+                gateway, GatewaySignalType.PROTOCOL_VIOLATION
+            )
+            assert "session_mode" in violation.reason
+            assert gateway.state is GatewayState.DISCONNECTED
+        finally:
+            if peer is not None:
+                await peer.close()
+            await gateway.close()
+
+    asyncio.run(scenario())
 
 
 def test_gateway_quarantine_recovers_crash_lost_open_only_from_exact_in_deal(

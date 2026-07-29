@@ -22,13 +22,13 @@ MQ5 = ROOT / "mql5_ea" / "QuantSwarmXAU.mq5"
 
 
 def test_product_version_is_unified():
-    assert PRODUCT_VERSION == "4.0.0-rc1"
+    assert PRODUCT_VERSION == "4.0.0-rc2"
     assert __version__ == PRODUCT_VERSION
     assert VERSION_CONTRACT["product"] == PRODUCT_VERSION
 
 
 def test_protocol_and_config_schema_match_contract():
-    assert PROTOCOL_VERSION == BROKER_PROTOCOL_VERSION == "4.0"
+    assert PROTOCOL_VERSION == BROKER_PROTOCOL_VERSION == "4.1"
     assert CONFIG_SCHEMA_VERSION == CONTRACT_CONFIG_SCHEMA_VERSION == 2
 
 
@@ -65,7 +65,7 @@ def test_canonical_launcher_reports_product_version():
 
     assert completed.returncode == 0
     assert completed.stderr == ""
-    assert completed.stdout.strip() == "QUANT-SWARM-XAU 4.0.0-rc1"
+    assert completed.stdout.strip() == "QUANT-SWARM-XAU 4.0.0-rc2"
 
 
 def test_active_branding_contains_no_draft_version():

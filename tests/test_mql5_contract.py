@@ -59,13 +59,13 @@ def _brace_balance(source: str) -> int:
 
 def test_source_has_balanced_structure_and_explicit_unverified_compile_gate():
     assert _brace_balance(SOURCE) == 0
-    assert '#property version   "4.00"' in SOURCE
+    assert '#property version   "4.01"' in SOURCE
     assert "Native MetaEditor compilation remains a mandatory release gate" in SOURCE
 
 
 def test_authenticated_epoch_fenced_flat_v4_session_is_mandatory():
     for token in (
-        "QSX_PROTOCOL_VERSION \"4.0\"",
+        "QSX_PROTOCOL_VERSION \"4.1\"",
         "InpAuthToken",
         "g_ConnectionEpoch",
         "g_SendSequence",
@@ -85,19 +85,23 @@ def test_hello_ack_must_authorize_identity_mode_config_and_permissions():
         "account_trade_mode",
         "trade_allowed",
         "expert_allowed",
+        "session_mode",
         "expected_account_id",
         "expected_broker_server",
         "expected_account_trade_mode",
         "expected_symbol",
         "expected_magic",
         "allow_real",
+        "expected_session_mode",
         "peerDealCursor",
         "InpPermitRealAccount",
+        "InpSessionMode",
         "configHash == InpConfigHash",
         "TerminalInfoInteger(TERMINAL_TRADE_ALLOWED)",
     ):
         assert token in SOURCE
-    assert "if(!identityOk || !modeOk || !permissionOk)" in SOURCE
+    assert "if(!identityOk || !modeOk || !sessionModeOk || !permissionOk)" in SOURCE
+    assert "bool permissionOk = IsObservationOnlySession() ||" in SOURCE
 
 
 def test_socket_send_handles_partial_writes_and_inbound_frames_are_bounded():
@@ -294,6 +298,57 @@ def test_daily_baseline_rolls_by_utc_date_and_persists_halt_state():
         "BASELINE_UNVERIFIED",
     ):
         assert token in SOURCE
+
+
+def test_daily_baseline_rollover_requires_verified_prior_state_and_durable_monotonic_day():
+    start = SOURCE.index("bool UpdateUtcRiskDay")
+    end = SOURCE.index("\nbool SetDailyHalt", start)
+    body = SOURCE[start:end]
+
+    assert "ReadUtcRiskDay(day, dayOrdinal)" in body
+    assert "RiskDayHighWaterGlobalKey()" in body
+    assert "InpApproveRiskDayHighWaterUtcDay" in body
+    assert 'MarkLocalStateFailure("UTC_RISK_DAY_MOVED_BACKWARD")' in body
+    assert (
+        'MarkLocalStateFailure("UTC_ROLLOVER_PRIOR_BASELINE_UNVERIFIED")'
+        in body
+    )
+    assert "dayOrdinal < durableHighWater" in body
+    assert "dayOrdinal < g_RiskDayOrdinal" in body
+    assert (
+        "bool continuousRollover = g_RiskDayOrdinal > 0 && "
+        "dayOrdinal > g_RiskDayOrdinal && "
+        "g_BaselineVerified;"
+    ) in body
+    assert "verified = continuousRollover;" in body
+    assert "SetVerifiedGlobal(highWaterKey, (double)dayOrdinal)" in body
+
+
+def test_observation_only_is_default_and_locally_fences_every_mutating_command():
+    assert "InpSessionMode          = QSX_SESSION_SHADOW" in SOURCE
+    assert "InpEmergencyStop        = true" in SOURCE
+    assert "bool IsObservationOnlySession()" in SOURCE
+    assert 'return action == "REQUEST_SNAPSHOT";' in SOURCE
+
+    start = SOURCE.index("void HandleCommand")
+    end = SOURCE.index("\nvoid HandleHelloAck", start)
+    body = SOURCE[start:end]
+    fence = (
+        "if(IsObservationOnlySession() && "
+        "!IsObservationCommand(action))"
+    )
+    assert fence in body
+    assert '"SHADOW_OBSERVATION_ONLY"' in body
+    assert body.index(fence) < body.index("ReplayCommandIfKnown")
+    assert body.index(fence) < body.index("RejectAndStore")
+    for handler in (
+        "HandleOpen(json",
+        "HandleModifySl(json",
+        "HandlePartialClose(json",
+        "HandleClose(json",
+        "HandleCloseAll(json",
+    ):
+        assert body.index(fence) < body.index(handler)
 
 
 def test_command_journal_is_verified_before_every_broker_mutation():
