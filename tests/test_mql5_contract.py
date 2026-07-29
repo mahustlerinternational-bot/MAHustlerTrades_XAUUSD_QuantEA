@@ -85,6 +85,7 @@ def test_hello_ack_must_authorize_identity_mode_config_and_permissions():
         "account_trade_mode",
         "trade_allowed",
         "expert_allowed",
+        "emergency_stop",
         "session_mode",
         "expected_account_id",
         "expected_broker_server",
@@ -92,6 +93,7 @@ def test_hello_ack_must_authorize_identity_mode_config_and_permissions():
         "expected_symbol",
         "expected_magic",
         "allow_real",
+        "expected_ea_version",
         "expected_session_mode",
         "peerDealCursor",
         "InpPermitRealAccount",
@@ -102,6 +104,7 @@ def test_hello_ack_must_authorize_identity_mode_config_and_permissions():
         assert token in SOURCE
     assert "if(!identityOk || !modeOk || !sessionModeOk || !permissionOk)" in SOURCE
     assert "bool permissionOk = IsObservationOnlySession() ||" in SOURCE
+    assert "expectedEaVersion == QSX_EA_VERSION" in SOURCE
 
 
 def test_socket_send_handles_partial_writes_and_inbound_frames_are_bounded():
@@ -307,21 +310,83 @@ def test_daily_baseline_rollover_requires_verified_prior_state_and_durable_monot
 
     assert "ReadUtcRiskDay(day, dayOrdinal)" in body
     assert "RiskDayHighWaterGlobalKey()" in body
+    assert "RiskDayHighWaterCommitGlobalKey()" in body
+    assert "RiskDayHighWaterMigrationGlobalKey()" in body
     assert "InpApproveRiskDayHighWaterUtcDay" in body
     assert 'MarkLocalStateFailure("UTC_RISK_DAY_MOVED_BACKWARD")' in body
+    assert 'MarkLocalStateFailure("UTC_RISK_DAY_JUMP_FORWARD")' in body
+    assert (
+        'MarkLocalStateFailure("UTC_RISK_DAY_HIGH_WATER_STATE_MISMATCH")'
+        in body
+    )
     assert (
         'MarkLocalStateFailure("UTC_ROLLOVER_PRIOR_BASELINE_UNVERIFIED")'
         in body
     )
     assert "dayOrdinal < durableHighWater" in body
     assert "dayOrdinal < g_RiskDayOrdinal" in body
+    assert "IsNextUtcRiskDay(g_RiskDayOrdinal, dayOrdinal)" in body
     assert (
         "bool continuousRollover = g_RiskDayOrdinal > 0 && "
         "dayOrdinal > g_RiskDayOrdinal && "
+        "isExactNextDay && "
         "g_BaselineVerified;"
     ) in body
     assert "verified = continuousRollover;" in body
-    assert "SetVerifiedGlobal(highWaterKey, (double)dayOrdinal)" in body
+    assert "PersistRiskDayHighWater(dayOrdinal)" in body
+    assert body.index("UTC_RISK_DAY_MOVED_BACKWARD") < body.index(
+        "day == g_RiskDay"
+    )
+    assert body.index("UTC_RISK_DAY_JUMP_FORWARD") < body.index(
+        "bool continuousRollover"
+    )
+    assert body.index("UTC_RISK_DAY_JUMP_FORWARD") < body.index(
+        "BaselineGlobalKey(day)"
+    )
+
+
+def test_terminal_durable_namespaces_bind_broker_and_canonical_ownership_scope():
+    assert "uint StableScopeHash" in SOURCE
+    assert "string BrokerAccountScopeKey()" in SOURCE
+    assert "string BrokerTupleScopeKey()" in SOURCE
+    assert "AccountInfoString(ACCOUNT_SERVER)" in SOURCE
+
+    for function_name in (
+        "BaselineGlobalKey",
+        "HaltGlobalKey",
+        "BaselineVerifiedGlobalKey",
+        "RiskDayHighWaterGlobalKey",
+        "RiskDayHighWaterCommitGlobalKey",
+        "RiskDayHighWaterMigrationGlobalKey",
+    ):
+        start = SOURCE.index(f"string {function_name}")
+        end = SOURCE.index("\n}", start)
+        assert "BrokerAccountScopeKey()" in SOURCE[start:end]
+
+    for function_name in (
+        "CursorGlobalKey",
+        "CursorDealHighGlobalKey",
+        "CursorDealLowGlobalKey",
+        "CursorCommitGlobalKey",
+        "PositionVersionGlobalKey",
+        "PositionVersionTimeGlobalKey",
+        "PositionVersionCommitGlobalKey",
+        "CacheFileName",
+    ):
+        start = SOURCE.index(f"string {function_name}")
+        end = SOURCE.index("\n}", start)
+        assert "BrokerTupleScopeKey()" in SOURCE[start:end]
+
+
+def test_persisted_authorization_markers_accept_only_exact_binary_values():
+    assert "bool IsBinaryMarker(const double value)" in SOURCE
+    start = SOURCE.index("bool UpdateUtcRiskDay")
+    end = SOURCE.index("\nbool SetDailyHalt", start)
+    body = SOURCE[start:end]
+    assert "IsBinaryMarker(verifiedValue)" in body
+    assert "verified = verifiedValue == 1.0;" in body
+    assert "IsBinaryMarker(haltValue)" in body
+    assert "g_DailyHalted = haltValue == 1.0;" in body
 
 
 def test_observation_only_is_default_and_locally_fences_every_mutating_command():
@@ -341,6 +406,8 @@ def test_observation_only_is_default_and_locally_fences_every_mutating_command()
     assert '"SHADOW_OBSERVATION_ONLY"' in body
     assert body.index(fence) < body.index("ReplayCommandIfKnown")
     assert body.index(fence) < body.index("RejectAndStore")
+    assert body.index(fence) < body.index('"expires_at_ms"')
+    assert body.index(fence) < body.index("CommandRecord record")
     for handler in (
         "HandleOpen(json",
         "HandleModifySl(json",

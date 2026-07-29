@@ -146,9 +146,38 @@ def gateway_config(**overrides: object) -> GatewayConfig:
         "snapshot_timeout_ms": 1_000,
         "max_message_age_ms": 1_000,
         "max_context_age_ms": 500,
+        "session_mode": BrokerSessionMode.DEMO,
     }
     values.update(overrides)
     return GatewayConfig(**values)
+
+
+def test_gateway_configuration_defaults_to_non_executing_shadow():
+    config = GatewayConfig(
+        auth_token=TOKEN,
+        config_hash="cfg-1",
+        expected=EXPECTED,
+    )
+
+    assert config.session_mode is BrokerSessionMode.SHADOW
+    assert config.execution_enabled is False
+
+
+def test_gateway_configuration_rejects_real_accounts_in_this_release():
+    with pytest.raises(ValueError, match="REAL accounts are not supported"):
+        GatewayConfig(
+            auth_token=TOKEN,
+            config_hash="cfg-1",
+            expected=ExpectedBrokerIdentity(
+                account_id="123456",
+                broker_server="Broker-Real",
+                symbol="XAUUSD",
+                magic=202412,
+                allow_real_account=True,
+            ),
+            expected_trade_mode=BrokerTradeMode.REAL,
+            session_mode=BrokerSessionMode.DEMO,
+        )
 
 
 def context_for(
@@ -193,11 +222,7 @@ async def connect_peer(
 ) -> tuple[Peer, object]:
     reader, writer = await asyncio.open_connection("127.0.0.1", gateway.listen_port)
     peer = Peer(reader, writer, clock, epoch)
-    hello_fields = {
-        "session_mode": gateway.config.session_mode.value,
-        **(hello_overrides or {}),
-    }
-    hello = peer.frame(MessageType.HELLO, **hello_fields)
+    hello = peer.frame(MessageType.HELLO, **(hello_overrides or {}))
     await peer.send(hello, fragmented=fragmented_hello)
     ack = await peer.receive()
     return peer, ack
@@ -637,6 +662,70 @@ def test_command_ack_event_correlation_is_order_independent_and_disconnect_is_un
     asyncio.run(scenario())
 
 
+@pytest.mark.parametrize("disabled_permission", ["trade_allowed", "expert_allowed"])
+def test_demo_handshake_rejects_each_disabled_trading_permission(
+    disabled_permission,
+):
+    async def scenario() -> None:
+        clock = MutableClock()
+        gateway = BrokerGateway(config=gateway_config(), clock=clock)
+        await gateway.start()
+        peer = None
+        try:
+            peer, ack = await connect_peer(
+                gateway,
+                clock,
+                epoch=f"epoch-permission-{disabled_permission}",
+                hello_overrides={disabled_permission: False},
+            )
+            assert ack.fields["status"] == "REJECTED"
+            assert "trading disabled" in ack.fields["reason"]
+            await signal_of(gateway, GatewaySignalType.PROTOCOL_VIOLATION)
+            assert gateway.state is GatewayState.DISCONNECTED
+        finally:
+            if peer is not None:
+                await peer.close()
+            await gateway.close()
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize(
+    ("overrides", "reason"),
+    [
+        ({"role": "OTHER"}, "role"),
+        ({"ea_version": "4.00"}, "ea_version"),
+        ({"emergency_stop": True}, "emergency_stop"),
+    ],
+)
+def test_demo_handshake_pins_peer_role_version_and_entry_readiness(
+    overrides,
+    reason,
+):
+    async def scenario() -> None:
+        clock = MutableClock()
+        gateway = BrokerGateway(config=gateway_config(), clock=clock)
+        await gateway.start()
+        peer = None
+        try:
+            peer, ack = await connect_peer(
+                gateway,
+                clock,
+                epoch=f"epoch-invalid-{reason}",
+                hello_overrides=overrides,
+            )
+            assert ack.fields["status"] == "REJECTED"
+            assert reason in ack.fields["reason"]
+            await signal_of(gateway, GatewaySignalType.PROTOCOL_VIOLATION)
+            assert gateway.state is GatewayState.DISCONNECTED
+        finally:
+            if peer is not None:
+                await peer.close()
+            await gateway.close()
+
+    asyncio.run(scenario())
+
+
 @pytest.mark.parametrize(
     "action",
     [CommandAction.PARTIAL_CLOSE, CommandAction.CLOSE],
@@ -979,7 +1068,15 @@ def test_netting_account_is_rejected_for_execution_but_observable_in_shadow():
         await gateway.start()
         peer = None
         try:
-            peer, ack = await connect_peer(gateway, clock, epoch="epoch-netting-shadow")
+            peer, ack = await connect_peer(
+                gateway,
+                clock,
+                epoch="epoch-netting-shadow",
+                hello_overrides={
+                    "session_mode": BrokerSessionMode.SHADOW.value,
+                    "emergency_stop": True,
+                },
+            )
             await peer.send(
                 *full_snapshot_frames(
                     peer,
@@ -1018,10 +1115,12 @@ def test_shadow_handshake_accepts_disabled_mt5_trading_and_advertises_local_fenc
                 hello_overrides={
                     "trade_allowed": False,
                     "expert_allowed": False,
+                    "emergency_stop": True,
                     "session_mode": BrokerSessionMode.SHADOW.value,
                 },
             )
             assert ack.fields["status"] == "ACCEPTED"
+            assert ack.fields["expected_ea_version"] == "4.01"
             assert (
                 ack.fields["expected_session_mode"]
                 == BrokerSessionMode.SHADOW.value

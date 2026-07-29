@@ -119,16 +119,26 @@ def test_provider_agents_fail_closed_without_real_providers(tmp_path):
         )
 
 
-def test_unimplemented_broker_provider_source_is_rejected_before_runtime_construction(
+@pytest.mark.parametrize("provider_key", ["macro", "intermarket"])
+@pytest.mark.parametrize("source", ["broker", "file"])
+def test_unimplemented_provider_sources_are_rejected_before_runtime_construction(
     tmp_path,
+    provider_key,
+    source,
 ):
-    provider = {"enabled": True, "source": "broker", "max_age_s": 30}
+    provider = {"enabled": True, "source": source, "max_age_s": 30}
+    enabled = [
+        agent_id
+        for agent_id in range(1, 22)
+        if agent_id not in {10, 12, 14, 15}
+    ]
+    enabled.append(14 if provider_key == "macro" else 15)
     with pytest.raises(ConfigError, match="no canonical runtime adapter"):
         RuntimeConfig.from_mapping(
             {
                 **broker_config(tmp_path),
-                "agents": {"enabled": list(range(1, 22))},
-                "providers": {"macro": provider, "intermarket": provider},
+                "agents": {"enabled": enabled},
+                "providers": {provider_key: provider},
             },
             environ=BROKER_ENV,
         )

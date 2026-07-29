@@ -36,7 +36,9 @@ def test_mql5_declares_compatible_versions():
     source = MQ5.read_text(encoding="utf-8")
 
     assert f'#property version   "{MQL5_EA_VERSION}"' in source
+    assert f'#define QSX_EA_VERSION "{MQL5_EA_VERSION}"' in source
     assert f'#define QSX_PROTOCOL_VERSION "{BROKER_PROTOCOL_VERSION}"' in source
+    assert '",\\"ea_version\\":" + J(QSX_EA_VERSION)' in source
 
 
 def test_canonical_launcher_exposes_only_safe_modes():
@@ -80,3 +82,38 @@ def test_active_branding_contains_no_draft_version():
         text = path.read_text(encoding="utf-8")
         assert "4.0-draft" not in text
         assert "v4-draft" not in text
+
+
+def test_normative_docs_and_operator_runbooks_pin_rc2_contract():
+    required = {
+        ROOT / "docs" / "CANONICAL_ARCHITECTURE.md": (
+            PRODUCT_VERSION,
+            f"protocol {BROKER_PROTOCOL_VERSION}",
+            "InpApproveRiskDayHighWaterUtcDay",
+        ),
+        ROOT / "docs" / "README.md": (
+            PRODUCT_VERSION,
+            f"protocol {BROKER_PROTOCOL_VERSION}",
+        ),
+        ROOT / "docs" / "UPGRADE_GUIDE_v3.md": (
+            PRODUCT_VERSION,
+            f"protocol {BROKER_PROTOCOL_VERSION}",
+            MQL5_EA_VERSION,
+        ),
+        ROOT / "deployment" / "DEMO_FORWARD_TEST_RUNBOOK.md": (
+            "InpSessionMode",
+            "QSX_SESSION_SHADOW",
+            "InpApproveRiskDayHighWaterUtcDay",
+            "InpEmergencyStop",
+        ),
+        ROOT / "deployment" / "README.md": (
+            "InpSessionMode",
+            "InpApproveRiskDayHighWaterUtcDay",
+            "InpEmergencyStop",
+        ),
+    }
+
+    for path, tokens in required.items():
+        text = path.read_text(encoding="utf-8")
+        for token in tokens:
+            assert token in text, f"{path.relative_to(ROOT)} missing {token}"

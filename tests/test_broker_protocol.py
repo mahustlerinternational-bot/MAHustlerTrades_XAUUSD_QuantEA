@@ -60,12 +60,14 @@ def test_hello_exposes_identity_mode_and_permissions_for_fail_closed_authorizati
     assert hello.fields["account_trade_mode"] == "DEMO"
     assert hello.fields["trade_allowed"] is True
     assert hello.fields["expert_allowed"] is True
+    assert hello.fields["emergency_stop"] is False
     assert hello.fields["session_mode"] == BrokerSessionMode.DEMO.value
 
     ack = ProtocolCodec(TOKEN).decode(fixture_lines()[1])
     assert ack.fields["expected_account_id"] == "123456"
     assert ack.fields["expected_broker_server"] == "Broker-Demo"
     assert ack.fields["expected_account_trade_mode"] == "DEMO"
+    assert ack.fields["expected_ea_version"] == "4.01"
     assert ack.fields["expected_symbol"] == "XAUUSD"
     assert ack.fields["expected_magic"] == 202412
     assert ack.fields["allow_real"] is False
@@ -82,6 +84,7 @@ def test_hello_exposes_identity_mode_and_permissions_for_fail_closed_authorizati
     ("message_type", "field"),
     [
         (MessageType.HELLO, "session_mode"),
+        (MessageType.HELLO, "emergency_stop"),
         (MessageType.HELLO_ACK, "expected_session_mode"),
     ],
 )
@@ -93,6 +96,27 @@ def test_session_mode_is_a_strict_two_value_protocol_enum(message_type, field):
             ProtocolCodec(TOKEN).decode(
                 json.dumps(mutated, separators=(",", ":")) + "\n"
             )
+
+
+@pytest.mark.parametrize(
+    ("message_type", "field"),
+    [
+        (MessageType.HELLO, "session_mode"),
+        (MessageType.HELLO_ACK, "expected_session_mode"),
+        (MessageType.HELLO_ACK, "expected_ea_version"),
+    ],
+)
+def test_new_handshake_authority_fields_are_required(message_type, field):
+    raw = json.loads(fixture_line(message_type))
+    raw.pop(field)
+
+    with pytest.raises(ProtocolError) as error:
+        ProtocolCodec(TOKEN).decode(
+            json.dumps(raw, separators=(",", ":")) + "\n"
+        )
+
+    assert error.value.code == ProtocolErrorCode.MISSING_FIELD
+    assert field in error.value.detail
 
 
 def test_pending_order_snapshot_has_atomic_frames_and_string_broker_identity():
@@ -118,10 +142,13 @@ def test_wrong_version_auth_epoch_and_replayed_sequence_are_rejected():
     codec = ProtocolCodec(TOKEN)
     hello = json.loads(fixture_lines()[0])
 
-    wrong_version = dict(hello, v="3.0")
-    with pytest.raises(ProtocolError) as error:
-        codec.decode(json.dumps(wrong_version, separators=(",", ":")) + "\n")
-    assert error.value.code == ProtocolErrorCode.UNSUPPORTED_VERSION
+    for version in ("3.0", "4.0", "4.2"):
+        wrong_version = dict(hello, v=version)
+        with pytest.raises(ProtocolError) as error:
+            codec.decode(
+                json.dumps(wrong_version, separators=(",", ":")) + "\n"
+            )
+        assert error.value.code == ProtocolErrorCode.UNSUPPORTED_VERSION
 
     wrong_auth = dict(hello, auth="wrong")
     with pytest.raises(ProtocolError) as error:
