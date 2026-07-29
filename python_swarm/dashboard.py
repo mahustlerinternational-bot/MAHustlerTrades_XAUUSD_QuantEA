@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-QUANT-SWARM-XAU v4.0.0-rc1 — Read-only Dashboard Server
+QUANT-SWARM-XAU v4.0.0-rc2 — Read-only Dashboard Server
 Dashboard startup is not exposed by the remediation deployment wrapper.
 The default listener is http://127.0.0.1:8088 and is read-only.
 """

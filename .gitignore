@@ -24,6 +24,7 @@ build_evidence/
 release_output/
 backups/
 python_swarm/Qwen Studio_files/
+mql5_ea/*.ex5
 *.db
 *.db-shm
 *.db-wal

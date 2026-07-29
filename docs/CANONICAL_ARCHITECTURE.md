@@ -1,8 +1,8 @@
 # QUANT-SWARM-XAU Canonical Architecture
 
 Status: normative implementation baseline  
-Version: 4.0.0-rc1  
-Date: 2026-07-15
+Version: 4.0.0-rc2
+Date: 2026-07-29
 
 This document is the authority for the QUANT-SWARM-XAU implementation. Generated operator documentation may expand it. Customer-facing documentation is non-normative and must never contradict it.
 
@@ -74,6 +74,23 @@ Only `READY` may create a risk reservation or an OPEN command. Startup and recon
 - zero unresolved blocking reconciliation differences.
 
 Default invocation is non-trading. Demo or live command capability requires an explicit mode. Real-capital accounts remain disabled unless a separate explicit live-account permission is configured.
+
+The broker protocol pins the local EA and Python gateway to the same
+two-value session mode:
+
+- `SHADOW` is the EA default. It permits authenticated observations and
+  snapshots with terminal trading disabled. The EA rejects every mutating
+  command locally before replay, journal persistence, or broker dispatch.
+- `DEMO` is explicitly selected on both sides and retains terminal, account,
+  and expert trading-permission requirements. The EA also advertises its
+  emergency-stop state; DEMO authentication is rejected while that entry
+  fence remains active.
+
+There is no independently configurable execution boolean. A mode mismatch
+rejects the handshake, and protocol 4.1 must be promoted atomically with the
+matching freshly compiled EA. The gateway also pins `role=MT5_EA` and EA
+version `4.01`. REAL accounts are rejected by this release's gateway even
+when it is constructed directly.
 
 ## 4. Signal and fusion contract
 
@@ -210,7 +227,37 @@ Provider state is one of `STARTING`, `HEALTHY`, `STALE`, `ERROR` or `DISABLED`. 
 - Macro-calendar unavailability blocks new execution by default because news-blackout protection is unknown.
 - An explicit unsafe override may allow technical-only operation, but it visibly disables Agents 10 and 14 and may never report a healthy neutral calendar.
 
-Preferred first sources are MT5 Economic Calendar data relayed by the EA and configurable broker Market Watch symbols for DXY, US10Y and US30. Missing broker support leaves the provider disabled; values are never fabricated.
+This release implements only explicit HTTPS macro and intermarket provider
+adapters. The `broker` provider enum is reserved for a future authenticated
+EA relay and is rejected during configuration validation because no canonical
+runtime adapter exists. Missing provider support leaves the provider disabled;
+values are never fabricated.
+
+## 9.1 UTC risk-day monotonicity
+
+The EA stores a committed, account-scoped durable UTC-day high-water mark.
+Account risk state is namespaced by broker server and account login; command,
+cursor and position-version state is namespaced by the complete broker
+server/account/symbol/magic ownership tuple. A UTC day earlier than the mark
+or active in-memory day fails local state closed. A forward jump beyond the
+exact next calendar day also fails closed. Only a continuously running
+session whose prior baseline is verified may automatically verify a newly
+created exact-next-day baseline. Existing unverified baselines are elevated
+only by exact one-day approval inputs. Persisted authorization and halt
+markers accept only exact `0` or `1`.
+
+After a legitimate multi-day shutdown, a cold restart may advance the
+committed day only when `InpApproveRiskDayForwardJumpUtcDay` exactly matches
+the operator-verified current UTC day. This recovery never carries forward
+verification: the current-day baseline remains unverified and requires a
+separate exact equity/day approval after review. An active session never
+accepts this forward-gap override.
+
+Protocol 4.1 migration requires an operator to verify machine UTC and set
+`InpApproveRiskDayHighWaterUtcDay` to the exact current `YYYY-MM-DD` once for
+each account. The EA read-verifies the resulting high-water mark. It does not
+blindly seed this authority from the host clock. Remove that approval input
+after the successful migration and preserve the recorded state hashes.
 
 ## 10. Integrations and deployment
 

@@ -32,12 +32,26 @@ the runtime data/runtime directories. The runtime validates the release,
 configuration, interpreter and Python import paths before it creates state or
 opens a broker socket.
 
+For the RC2 EA, set `InpSessionMode=QSX_SESSION_SHADOW` and keep
+`InpEmergencyStop=true`. Verify UTC, perform the one-time
+`InpApproveRiskDayHighWaterUtcDay` migration for the exact broker/account,
+record successful read-back, clear the approval input, and restart. SHADOW
+must authenticate with MT5 AutoTrading off and remain locally non-mutating.
+After a legitimate multi-day shutdown, use
+`InpApproveRiskDayForwardJumpUtcDay` only on a cold restart with the exact
+independently verified current UTC day. The resulting baseline remains
+unverified and needs the separate day/equity approval before DEMO readiness.
+Clear every approval input after verified read-back.
+
 ## DEMO promotion
 
 `--demo` is an explicit promotion. Use a protected configuration derived from
 `config.demo.example.json` only after every canonical demo gate passes. Keep
 the account pinned to `DEMO`; any material code, configuration, risk,
 protocol, lifecycle or persistence change resets the forward-test clock.
+DEMO requires `InpSessionMode=QSX_SESSION_DEMO` and
+`InpEmergencyStop=false`; the gateway will reject DEMO while the emergency
+entry fence or any required trading permission remains active.
 Follow [DEMO_FORWARD_TEST_RUNBOOK.md](DEMO_FORWARD_TEST_RUNBOOK.md): it requires
 a freshly compiled EX5 bound into the frozen manifest, daily broker-versus-
 ledger reconciliation, at least 30 trading days (preferably 60 calendar days),

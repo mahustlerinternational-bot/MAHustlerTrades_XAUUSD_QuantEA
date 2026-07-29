@@ -1,11 +1,20 @@
 # Migration from experimental v2/v3 runtimes
 
-Status: mandatory breaking migration to the v4.0.0-rc1 safety model  
-Date: 2026-07-15
+Status: mandatory breaking migration to the v4.0.0-rc2 safety model
+Date: 2026-07-29
 
 This is not a drop-in upgrade. The old `orchestrator.py`, `evolved_orchestrator.py`, `ipc_bridge.py`, adaptive parameter mutation, per-agent simulation journals, and legacy start commands are not compatible with the canonical execution and evidence contracts.
 
 Real-account execution remains blocked throughout this migration.
+
+RC2 also breaks broker protocol compatibility. Promote Python protocol 4.1
+and the freshly compiled EA 4.01 together. Explicitly select the same
+`SHADOW` or `DEMO` session mode at both boundaries. For each account, verify
+machine UTC and set `InpApproveRiskDayHighWaterUtcDay` to the exact current
+UTC day once; blind clock-derived migration is intentionally rejected.
+After successful read-back, clear the high-water approval input. RC2 durable
+state uses new broker-scoped namespaces, so do not rename or copy legacy MT5
+Global Variables into the new namespace.
 
 ## What must not be carried forward
 

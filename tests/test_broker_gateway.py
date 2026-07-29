@@ -179,6 +179,21 @@ def test_gateway_configuration_rejects_real_accounts_in_this_release():
             session_mode=BrokerSessionMode.DEMO,
         )
 
+    with pytest.raises(ValueError, match="REAL accounts are not supported"):
+        GatewayConfig(
+            auth_token=TOKEN,
+            config_hash="cfg-1",
+            expected=ExpectedBrokerIdentity(
+                account_id="123456",
+                broker_server="Broker-Demo",
+                symbol="XAUUSD",
+                magic=202412,
+                allow_real_account=True,
+            ),
+            expected_trade_mode=BrokerTradeMode.DEMO,
+            session_mode=BrokerSessionMode.DEMO,
+        )
+
 
 def context_for(
     observed,

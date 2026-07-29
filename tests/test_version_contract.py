@@ -104,11 +104,13 @@ def test_normative_docs_and_operator_runbooks_pin_rc2_contract():
             "InpSessionMode",
             "QSX_SESSION_SHADOW",
             "InpApproveRiskDayHighWaterUtcDay",
+            "InpApproveRiskDayForwardJumpUtcDay",
             "InpEmergencyStop",
         ),
         ROOT / "deployment" / "README.md": (
             "InpSessionMode",
             "InpApproveRiskDayHighWaterUtcDay",
+            "InpApproveRiskDayForwardJumpUtcDay",
             "InpEmergencyStop",
         ),
     }

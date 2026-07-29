@@ -84,7 +84,6 @@ def test_hello_exposes_identity_mode_and_permissions_for_fail_closed_authorizati
     ("message_type", "field"),
     [
         (MessageType.HELLO, "session_mode"),
-        (MessageType.HELLO, "emergency_stop"),
         (MessageType.HELLO_ACK, "expected_session_mode"),
     ],
 )
@@ -102,6 +101,7 @@ def test_session_mode_is_a_strict_two_value_protocol_enum(message_type, field):
     ("message_type", "field"),
     [
         (MessageType.HELLO, "session_mode"),
+        (MessageType.HELLO, "emergency_stop"),
         (MessageType.HELLO_ACK, "expected_session_mode"),
         (MessageType.HELLO_ACK, "expected_ea_version"),
     ],
@@ -117,6 +117,20 @@ def test_new_handshake_authority_fields_are_required(message_type, field):
 
     assert error.value.code == ProtocolErrorCode.MISSING_FIELD
     assert field in error.value.detail
+
+
+@pytest.mark.parametrize("invalid", [0, 1, "false"])
+def test_emergency_stop_requires_a_json_boolean(invalid):
+    raw = json.loads(fixture_line(MessageType.HELLO))
+    raw["emergency_stop"] = invalid
+
+    with pytest.raises(ProtocolError) as error:
+        ProtocolCodec(TOKEN).decode(
+            json.dumps(raw, separators=(",", ":")) + "\n"
+        )
+
+    assert error.value.code == ProtocolErrorCode.INVALID_FIELD_TYPE
+    assert error.value.detail == "emergency_stop"
 
 
 def test_pending_order_snapshot_has_atomic_frames_and_string_broker_identity():

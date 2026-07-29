@@ -1,8 +1,8 @@
 # QUANT-SWARM-XAU documentation
 
 Status: remediation build; not approved for real-capital trading  
-Architecture version: 4.0.0-rc1  
-Last reviewed: 2026-07-15
+Architecture version: 4.0.0-rc2
+Last reviewed: 2026-07-29
 
 The normative system design is [CANONICAL_ARCHITECTURE.md](CANONICAL_ARCHITECTURE.md). If another file, comment, configuration, binary, or historical runtime conflicts with that document, the canonical architecture wins.
 
@@ -12,6 +12,12 @@ The normative system design is [CANONICAL_ARCHITECTURE.md](CANONICAL_ARCHITECTUR
 - The previous v2/v3 orchestrators, standalone IPC launchers, and self-modifying learning paths are retired and are not deployment entry points.
 - Historical databases and recovered journals are evidence only. They are not authoritative broker records and are not learning inputs.
 - Telegram, Discord, website, and dashboard output are projections only; they cannot approve or mutate trades.
+- Broker protocol 4.1 pins both ends to `SHADOW` or `DEMO`; SHADOW is the
+  EA-local default and rejects broker mutation even if a peer sends a command.
+- The account-scoped UTC risk-day high-water migration must be explicitly
+  approved before the RC2 EA starts, verified, and then removed from the EA
+  inputs. Risk state is broker/account scoped, and command state is bound to
+  the full broker ownership tuple.
 - A frozen build must pass the promotion gates and then complete at least 30 trading days, preferably 60 calendar days, on MT5 demo. That observation period has not yet been completed.
 
 No win rate, signal count, profit factor, return, or “never loses” statement in an archived document is accepted as verified performance.

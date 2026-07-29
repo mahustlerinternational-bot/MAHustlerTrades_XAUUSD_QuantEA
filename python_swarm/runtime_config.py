@@ -732,8 +732,16 @@ def _validate_runtime(config: RuntimeConfig, environ: Mapping[str, str]) -> None
                 f"provider {provider_key!r} and agent {agent_id:02d} must be enabled or disabled together"
             )
         if provider.enabled:
-            if config.mode.may_connect_broker and provider.source not in {
+            if provider.source in {
                 ProviderSource.BROKER,
+                ProviderSource.FILE,
+            }:
+                raise ConfigError(
+                    f"provider {provider_key!r} selects "
+                    f"source={provider.source.value!r} but "
+                    "no canonical runtime adapter exists"
+                )
+            if config.mode.may_connect_broker and provider.source not in {
                 ProviderSource.HTTP,
             }:
                 raise ConfigError(

@@ -36,6 +36,7 @@ from .broker_gateway import (
     GatewaySignal,
     GatewaySignalType,
 )
+from .broker_protocol import BrokerSessionMode
 from .domain_models import (
     BrokerEvent,
     BrokerEventType,
@@ -515,7 +516,11 @@ class DefaultRuntimeComponentFactory:
             heartbeat_timeout_ms=int(config.ipc.heartbeat_timeout_s * 1_000),
             # The application composes the lifecycle-first producer before the
             # gateway starts listening.  SHADOW remains transport-fenced.
-            execution_enabled=config.mode is RuntimeMode.DEMO,
+            session_mode=(
+                BrokerSessionMode.DEMO
+                if config.mode is RuntimeMode.DEMO
+                else BrokerSessionMode.SHADOW
+            ),
         )
         return BrokerGateway(
             config=gateway_config,

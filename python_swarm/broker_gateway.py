@@ -26,6 +26,7 @@ from types import MappingProxyType
 from typing import Any, Awaitable, Callable, Mapping, Protocol, runtime_checkable
 
 from .broker_protocol import (
+    BrokerSessionMode,
     DEFAULT_MAX_FRAME_BYTES,
     MessageType,
     ProtocolCodec,
@@ -59,6 +60,7 @@ from .runtime_state import (
     identity_mismatches,
 )
 from .trade_ledger import BrokerDealRecord, OwnedPositionRecord, PendingOrderRecord
+from .version import MQL5_EA_VERSION
 
 
 _TIMEFRAME_MS: Mapping[str, int] = MappingProxyType(
@@ -403,15 +405,15 @@ class GatewayConfig:
     max_snapshot_items: int = 10_000
     dedupe_limit: int = 50_000
     max_completed_bars_per_timeframe: int = 5_000
-    execution_enabled: bool = True
+    session_mode: BrokerSessionMode = BrokerSessionMode.SHADOW
 
     def __post_init__(self) -> None:
         if not isinstance(self.expected, ExpectedBrokerIdentity):
             raise TypeError("expected must be ExpectedBrokerIdentity")
         if not isinstance(self.expected_trade_mode, BrokerTradeMode):
             raise TypeError("expected_trade_mode must be BrokerTradeMode")
-        if not isinstance(self.execution_enabled, bool):
-            raise TypeError("execution_enabled must be boolean")
+        if not isinstance(self.session_mode, BrokerSessionMode):
+            raise TypeError("session_mode must be BrokerSessionMode")
         for name in ("auth_token", "config_hash", "expected_currency", "server_id"):
             if not isinstance(getattr(self, name), str) or not getattr(self, name).strip():
                 raise ValueError(f"{name} must be non-empty")
@@ -423,9 +425,12 @@ class GatewayConfig:
             raise ValueError("contest accounts are not authorised")
         if (
             self.expected_trade_mode is BrokerTradeMode.REAL
-            and not self.expected.allow_real_account
+            or self.expected.allow_real_account
         ):
-            raise ValueError("REAL mode requires explicit expected real-account authority")
+            raise ValueError(
+                "REAL accounts are not supported by this release; "
+                "real-account authority must remain false"
+            )
         if not 512 <= self.max_frame_bytes <= 65_536:
             raise ValueError("frame bound must be in [512,65536]")
         for name in (
@@ -445,6 +450,10 @@ class GatewayConfig:
             raise ValueError("completed-bar timeframe cache cannot exceed 5000")
         if self.max_future_skew_ms < 0:
             raise ValueError("max_future_skew_ms cannot be negative")
+
+    @property
+    def execution_enabled(self) -> bool:
+        return self.session_mode is BrokerSessionMode.DEMO
 
 
 @dataclass(slots=True)
@@ -1037,6 +1046,10 @@ class BrokerGateway(BrokerPort, ReconciliationBrokerPort):
             trade_mode = BrokerTradeMode(str(fields["account_trade_mode"]))
         except ValueError as exc:
             raise GatewayProtocolError("unknown account trade mode") from exc
+        try:
+            session_mode = BrokerSessionMode(str(fields["session_mode"]))
+        except ValueError as exc:
+            raise GatewayProtocolError("unknown broker session mode") from exc
         actual = BrokerIdentity(
             account_id=str(fields["account_id"]),
             broker_server=str(fields["broker_server"]),
@@ -1057,6 +1070,24 @@ class BrokerGateway(BrokerPort, ReconciliationBrokerPort):
         if trade_mode is not self.config.expected_trade_mode:
             mismatches.append(
                 f"trade_mode: expected {self.config.expected_trade_mode.value}, got {trade_mode.value}"
+            )
+        if fields["role"] != "MT5_EA":
+            mismatches.append(
+                f"role: expected MT5_EA, got {fields['role']}"
+            )
+        if fields["ea_version"] != MQL5_EA_VERSION:
+            mismatches.append(
+                f"ea_version: expected {MQL5_EA_VERSION}, "
+                f"got {fields['ea_version']}"
+            )
+        if session_mode is not self.config.session_mode:
+            mismatches.append(
+                f"session_mode: expected {self.config.session_mode.value}, "
+                f"got {session_mode.value}"
+            )
+        if self.config.execution_enabled and bool(fields["emergency_stop"]):
+            mismatches.append(
+                "emergency_stop: DEMO requires the EA entry fence to be disabled"
             )
         if fields["config_hash"] != self.config.config_hash:
             mismatches.append("config_hash mismatch")
@@ -1109,6 +1140,10 @@ class BrokerGateway(BrokerPort, ReconciliationBrokerPort):
                         "identity": asdict(actual),
                         "config_hash": self.config.config_hash,
                         "trade_mode": self.config.expected_trade_mode.value,
+                        "role": fields["role"],
+                        "ea_version": fields["ea_version"],
+                        "emergency_stop": fields["emergency_stop"],
+                        "session_mode": self.config.session_mode.value,
                     }
                 ),
             )
@@ -1120,6 +1155,8 @@ class BrokerGateway(BrokerPort, ReconciliationBrokerPort):
             "expected_account_id": self.config.expected.account_id,
             "expected_broker_server": self.config.expected.broker_server,
             "expected_account_trade_mode": self.config.expected_trade_mode.value,
+            "expected_ea_version": MQL5_EA_VERSION,
+            "expected_session_mode": self.config.session_mode.value,
             "expected_symbol": self.config.expected.symbol,
             "expected_magic": self.config.expected.magic,
             "allow_real": self.config.expected.allow_real_account,

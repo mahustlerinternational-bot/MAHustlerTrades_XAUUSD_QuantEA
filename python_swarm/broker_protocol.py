@@ -55,6 +55,13 @@ class MessageType(StrEnum):
     BROKER_EVENT = "BROKER_EVENT"
 
 
+class BrokerSessionMode(StrEnum):
+    """Execution authority negotiated across the EA/gateway boundary."""
+
+    SHADOW = "SHADOW"
+    DEMO = "DEMO"
+
+
 class CommandAction(StrEnum):
     OPEN = "OPEN"
     MODIFY_SL = "MODIFY_SL"
@@ -119,13 +126,14 @@ SCHEMAS: Mapping[MessageType, _Schema] = MappingProxyType(
                 {
                     "role", "ea_version", "account_id", "broker_server",
                     "account_trade_mode", "trade_allowed", "expert_allowed",
-                    "symbol", "magic", "config_hash",
+                    "emergency_stop", "session_mode", "symbol", "magic",
+                    "config_hash",
                 }
             ),
             frozenset({"terminal_build"}),
             _ids(
                 "role", "ea_version", "account_id", "broker_server",
-                "account_trade_mode", "symbol", "config_hash",
+                "account_trade_mode", "session_mode", "symbol", "config_hash",
             ),
         ),
         MessageType.HELLO_ACK: _Schema(
@@ -133,13 +141,16 @@ SCHEMAS: Mapping[MessageType, _Schema] = MappingProxyType(
                 {
                     "status", "server_id", "config_hash", "expected_account_id",
                     "expected_broker_server", "expected_account_trade_mode",
-                    "expected_symbol", "expected_magic", "allow_real", "deal_cursor",
+                    "expected_ea_version", "expected_session_mode",
+                    "expected_symbol", "expected_magic", "allow_real",
+                    "deal_cursor",
                 }
             ),
             frozenset({"reason"}),
             _ids(
                 "status", "server_id", "config_hash", "expected_account_id",
                 "expected_broker_server", "expected_account_trade_mode",
+                "expected_ea_version", "expected_session_mode",
                 "expected_symbol", "deal_cursor", "reason",
             ),
         ),
@@ -313,7 +324,9 @@ SCHEMAS: Mapping[MessageType, _Schema] = MappingProxyType(
 
 BOOLEAN_FIELDS = MappingProxyType(
     {
-        MessageType.HELLO: frozenset({"trade_allowed", "expert_allowed"}),
+        MessageType.HELLO: frozenset(
+            {"trade_allowed", "expert_allowed", "emergency_stop"}
+        ),
         MessageType.HELLO_ACK: frozenset({"allow_real"}),
         MessageType.ACCOUNT_SNAPSHOT: frozenset(
             {"trade_allowed", "expert_allowed", "baseline_verified", "daily_halted"}
@@ -617,7 +630,8 @@ class ProtocolCodec:
                     "role", "ea_version", "config_hash", "account_trade_mode",
                     "account_mode", "currency", "risk_day", "tf", "direction",
                     "entry_type", "cursor", "cursor_from", "cursor_next",
-                    "deal_cursor", "last_deal_cursor",
+                    "deal_cursor", "last_deal_cursor", "session_mode",
+                    "expected_session_mode", "expected_ea_version",
                 }
             )
             if name in message.fields and must_be_nonempty and not message.fields[name]:
@@ -642,6 +656,19 @@ class ProtocolCodec:
                 value != value or value in (float("inf"), float("-inf"))
             ):
                 raise ProtocolError(ProtocolErrorCode.INVALID_FIELD_TYPE, name)
+
+        session_mode_field = {
+            MessageType.HELLO: "session_mode",
+            MessageType.HELLO_ACK: "expected_session_mode",
+        }.get(message.message_type)
+        if session_mode_field is not None:
+            try:
+                BrokerSessionMode(message.fields[session_mode_field])
+            except (TypeError, ValueError) as exc:
+                raise ProtocolError(
+                    ProtocolErrorCode.INVALID_FIELD_TYPE,
+                    session_mode_field,
+                ) from exc
 
         if message.message_type == MessageType.COMMAND:
             try:
@@ -744,6 +771,7 @@ class ProtocolSession:
 
 
 __all__ = [
+    "BrokerSessionMode",
     "COMMAND_REQUIRED",
     "DEFAULT_MAX_FRAME_BYTES",
     "MessageType",

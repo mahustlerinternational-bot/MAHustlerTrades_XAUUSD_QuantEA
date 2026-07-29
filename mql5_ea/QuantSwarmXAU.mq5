@@ -1,17 +1,24 @@
 //+------------------------------------------------------------------+
-//| QUANT-SWARM-XAU Broker Adapter v4.00                             |
+//| QUANT-SWARM-XAU Broker Adapter v4.01                             |
 //| Authenticated flat NDJSON; broker events are authoritative       |
 //| Native MetaEditor compilation remains a mandatory release gate   |
 //+------------------------------------------------------------------+
 #property copyright "QUANT-SWARM-XAU"
-#property version   "4.00"
+#property version   "4.01"
 #property strict
 
 #include <Trade\Trade.mqh>
 #include <Trade\PositionInfo.mqh>
 
-#define QSX_PROTOCOL_VERSION "4.0"
+#define QSX_EA_VERSION "4.01"
+#define QSX_PROTOCOL_VERSION "4.1"
 #define QSX_CACHE_LIMIT 512
+
+enum QSX_SESSION_MODE
+{
+   QSX_SESSION_SHADOW = 0,
+   QSX_SESSION_DEMO   = 1
+};
 
 input string InpHost                 = "127.0.0.1";
 input int    InpPort                 = 9876;
@@ -27,7 +34,10 @@ input int    InpMaxFrameBytes        = 16384;
 input int    InpMaxCommandRetries    = 3;
 input int    InpDealReplayLookbackDays = 90;
 input bool   InpPermitRealAccount    = false;    // Requires server approval too
-input bool   InpEmergencyStop        = false;
+input QSX_SESSION_MODE InpSessionMode          = QSX_SESSION_SHADOW;
+input bool   InpEmergencyStop        = true;
+input string InpApproveRiskDayHighWaterUtcDay = ""; // Exact UTC day; required once per account migration
+input string InpApproveRiskDayForwardJumpUtcDay = ""; // Exact current UTC day; cold-restart gap only
 input string InpApproveBaselineUtcDay = "";  // Exact UTC day YYYY-MM-DD; one-day scope
 input double InpApproveBaselineEquity = 0.0; // Must match the existing persisted baseline
 input bool   InpSendHistoryOnConnect = true;
@@ -51,6 +61,7 @@ long   g_SendSequence    = 0;
 long   g_LastRecvSequence = 0;
 
 string g_RiskDay         = "";
+int    g_RiskDayOrdinal  = 0;
 double g_DayStartEquity  = 0.0;
 double g_DailyPnL        = 0.0;
 bool   g_DailyHalted     = false;
@@ -167,11 +178,78 @@ string AccountMarginModeText()
    return "NETTING";
 }
 
-string UtcRiskDay()
+string SessionModeText()
+{
+   return InpSessionMode == QSX_SESSION_DEMO ? "DEMO" : "SHADOW";
+}
+
+bool IsObservationOnlySession()
+{
+   return InpSessionMode == QSX_SESSION_SHADOW;
+}
+
+bool IsObservationCommand(const string action)
+{
+   return action == "REQUEST_SNAPSHOT";
+}
+
+bool ReadUtcRiskDay(string &day, int &ordinal)
 {
    MqlDateTime part;
-   TimeToStruct(TimeGMT(), part);
-   return StringFormat("%04d-%02d-%02d", part.year, part.mon, part.day);
+   datetime sampledUtc = TimeGMT();
+   if(!TimeToStruct(sampledUtc, part)) return false;
+   day = StringFormat("%04d-%02d-%02d", part.year, part.mon, part.day);
+   ordinal = part.year * 10000 + part.mon * 100 + part.day;
+   return part.year >= 1970 && part.mon >= 1 && part.mon <= 12 &&
+          part.day >= 1 && part.day <= 31 && StringLen(day) == 10;
+}
+
+bool RiskDayOrdinalToStart(const int ordinal, datetime &dayStart)
+{
+   MqlDateTime candidate;
+   candidate.year = ordinal / 10000;
+   candidate.mon = (ordinal / 100) % 100;
+   candidate.day = ordinal % 100;
+   candidate.hour = 0;
+   candidate.min = 0;
+   candidate.sec = 0;
+   candidate.day_of_week = 0;
+   candidate.day_of_year = 0;
+   if(candidate.year < 1970 || candidate.year > 9999 ||
+      candidate.mon < 1 || candidate.mon > 12 ||
+      candidate.day < 1 || candidate.day > 31)
+      return false;
+
+   dayStart = StructToTime(candidate);
+   if(dayStart <= 0) return false;
+   MqlDateTime normalized;
+   return TimeToStruct(dayStart, normalized) &&
+          normalized.year == candidate.year &&
+          normalized.mon == candidate.mon &&
+          normalized.day == candidate.day;
+}
+
+bool IsValidUtcRiskDayOrdinal(const int ordinal)
+{
+   datetime dayStart = 0;
+   return RiskDayOrdinalToStart(ordinal, dayStart);
+}
+
+bool IsNextUtcRiskDay(const int previousOrdinal, const int currentOrdinal)
+{
+   datetime previousStart = 0;
+   if(!RiskDayOrdinalToStart(previousOrdinal, previousStart)) return false;
+   MqlDateTime next;
+   if(!TimeToStruct(previousStart + 86400, next)) return false;
+   int nextOrdinal = next.year * 10000 + next.mon * 100 + next.day;
+   return currentOrdinal == nextOrdinal;
+}
+
+string UtcRiskDay()
+{
+   string day = "";
+   int ordinal = 0;
+   return ReadUtcRiskDay(day, ordinal) ? day : "";
 }
 
 string SafeKeyPart(string value)
@@ -182,63 +260,108 @@ string SafeKeyPart(string value)
    return value;
 }
 
+uint StableScopeHash(const string value, const uint seed, const bool reverse)
+{
+   uint hash = seed;
+   int length = StringLen(value);
+   for(int i = 0; i < length; i++)
+   {
+      int index = reverse ? length - 1 - i : i;
+      hash ^= (uint)StringGetCharacter(value, index);
+      hash *= 16777619;
+   }
+   return hash;
+}
+
+string StableScopeDigest(const string value)
+{
+   uint forward = StableScopeHash(value, (uint)2166136261, false);
+   uint reverse = StableScopeHash(value, (uint)2246822519, true);
+   return StringFormat("%08lX%08lX", forward, reverse);
+}
+
+string BrokerAccountScopeKey()
+{
+   string broker = AccountInfoString(ACCOUNT_SERVER);
+   string identity = broker + "|" + AccountId();
+   return SafeKeyPart(AccountId()) + "_" + StableScopeDigest(identity);
+}
+
+string BrokerTupleScopeKey()
+{
+   string identity = AccountInfoString(ACCOUNT_SERVER) + "|" + AccountId() +
+                     "|" + _Symbol + "|" + IntegerToString(InpMagicNumber);
+   return StableScopeDigest(identity);
+}
+
 string BaselineGlobalKey(const string day)
 {
-   return "QSX4_BASE_" + SafeKeyPart(AccountId()) + "_" + SafeKeyPart(day);
+   return "QSX4_BASE_" + BrokerAccountScopeKey() + "_" + SafeKeyPart(day);
 }
 
 string HaltGlobalKey(const string day)
 {
-   return "QSX4_HALT_" + SafeKeyPart(AccountId()) + "_" + SafeKeyPart(day);
+   return "QSX4_HALT_" + BrokerAccountScopeKey() + "_" + SafeKeyPart(day);
 }
 
 string BaselineVerifiedGlobalKey(const string day)
 {
-   return "QSX4_BASE_OK_" + SafeKeyPart(AccountId()) + "_" + SafeKeyPart(day);
+   return "QSX4_BASE_OK_" + BrokerAccountScopeKey() + "_" + SafeKeyPart(day);
+}
+
+string RiskDayHighWaterGlobalKey()
+{
+   return "QSX4_DAY_HW_" + BrokerAccountScopeKey();
+}
+
+string RiskDayHighWaterCommitGlobalKey()
+{
+   return "QSX4_DAY_HWC_" + BrokerAccountScopeKey();
+}
+
+string RiskDayHighWaterMigrationGlobalKey()
+{
+   return "QSX4_DAY_HWM_" + BrokerAccountScopeKey();
 }
 
 string CursorGlobalKey()
 {
-   return "QSX4_CURSOR_" + SafeKeyPart(AccountId()) + "_" + IntegerToString(InpMagicNumber);
+   return "QSX4_CURSOR_" + BrokerTupleScopeKey();
 }
 
 string CursorDealHighGlobalKey()
 {
-   return "QSX4_CURSOR_DEAL_HI_" + SafeKeyPart(AccountId()) + "_" + IntegerToString(InpMagicNumber);
+   return "QSX4_CURSOR_DEAL_HI_" + BrokerTupleScopeKey();
 }
 
 string CursorDealLowGlobalKey()
 {
-   return "QSX4_CURSOR_DEAL_LO_" + SafeKeyPart(AccountId()) + "_" + IntegerToString(InpMagicNumber);
+   return "QSX4_CURSOR_DEAL_LO_" + BrokerTupleScopeKey();
 }
 
 string CursorCommitGlobalKey()
 {
-   return "QSX4_CURSOR_COMMIT_" + SafeKeyPart(AccountId()) + "_" + IntegerToString(InpMagicNumber);
+   return "QSX4_CURSOR_COMMIT_" + BrokerTupleScopeKey();
 }
 
 string PositionVersionGlobalKey(const string positionId)
 {
-   return "QSX4_PV_" + SafeKeyPart(AccountId()) + "_" +
-          IntegerToString(InpMagicNumber) + "_" + SafeKeyPart(positionId);
+   return "QSX4_PV_" + BrokerTupleScopeKey() + "_" + SafeKeyPart(positionId);
 }
 
 string PositionVersionTimeGlobalKey(const string positionId)
 {
-   return "QSX4_PVT_" + SafeKeyPart(AccountId()) + "_" +
-          IntegerToString(InpMagicNumber) + "_" + SafeKeyPart(positionId);
+   return "QSX4_PVT_" + BrokerTupleScopeKey() + "_" + SafeKeyPart(positionId);
 }
 
 string PositionVersionCommitGlobalKey(const string positionId)
 {
-   return "QSX4_PVC_" + SafeKeyPart(AccountId()) + "_" +
-          IntegerToString(InpMagicNumber) + "_" + SafeKeyPart(positionId);
+   return "QSX4_PVC_" + BrokerTupleScopeKey() + "_" + SafeKeyPart(positionId);
 }
 
 string CacheFileName()
 {
-   return "QuantSwarmXAU_v4_commands_" + SafeKeyPart(AccountId()) + "_" +
-          IntegerToString(InpMagicNumber) + ".log";
+   return "QuantSwarmXAU_v4_commands_" + BrokerTupleScopeKey() + ".log";
 }
 
 string NewEpoch()
@@ -579,6 +702,28 @@ bool SetVerifiedGlobal(const string key, const double value)
    GlobalVariablesFlush();
    double observed = 0.0;
    return ReadVerifiedGlobal(key, observed) && observed == value;
+}
+
+bool IsBinaryMarker(const double value)
+{
+   return MathIsValidNumber(value) && (value == 0.0 || value == 1.0);
+}
+
+bool PersistRiskDayHighWater(const int dayOrdinal)
+{
+   string valueKey = RiskDayHighWaterGlobalKey();
+   string commitKey = RiskDayHighWaterCommitGlobalKey();
+   return SetVerifiedGlobal(commitKey, 0.0) &&
+          SetVerifiedGlobal(valueKey, (double)dayOrdinal) &&
+          SetVerifiedGlobal(commitKey, (double)dayOrdinal);
+}
+
+bool PersistInitialRiskDayHighWater(const int dayOrdinal)
+{
+   string migrationKey = RiskDayHighWaterMigrationGlobalKey();
+   return SetVerifiedGlobal(migrationKey, 0.0) &&
+          PersistRiskDayHighWater(dayOrdinal) &&
+          SetVerifiedGlobal(migrationKey, 1.0);
 }
 
 bool BaselineApprovalMatches(const string day, const double baseline)
@@ -1237,9 +1382,96 @@ string TradeIdForPosition(const string positionId, const string comment)
 
 bool UpdateUtcRiskDay()
 {
-   string day = UtcRiskDay();
-   if(day == g_RiskDay && g_DayStartEquity > 0.0) return g_LocalStateHealthy;
-   bool continuousRollover = g_RiskDay != "" && day != g_RiskDay;
+   string day = "";
+   int dayOrdinal = 0;
+   if(!ReadUtcRiskDay(day, dayOrdinal))
+   {
+      MarkLocalStateFailure("UTC_RISK_DAY_READ_FAILED");
+      return false;
+   }
+
+   string highWaterKey = RiskDayHighWaterGlobalKey();
+   string highWaterCommitKey = RiskDayHighWaterCommitGlobalKey();
+   string highWaterMigrationKey = RiskDayHighWaterMigrationGlobalKey();
+   bool hasHighWater = GlobalVariableCheck(highWaterKey);
+   bool hasHighWaterCommit = GlobalVariableCheck(highWaterCommitKey);
+   bool hasHighWaterMigration = GlobalVariableCheck(highWaterMigrationKey);
+   bool highWaterExists = hasHighWater && hasHighWaterCommit &&
+                          hasHighWaterMigration;
+   double highWaterValue = 0.0;
+   double highWaterCommitValue = 0.0;
+   double highWaterMigrationValue = 0.0;
+   int durableHighWater = 0;
+   if((hasHighWater || hasHighWaterCommit || hasHighWaterMigration) &&
+      !highWaterExists)
+   {
+      MarkLocalStateFailure("UTC_RISK_DAY_HIGH_WATER_STATE_TORN");
+      return false;
+   }
+   if(highWaterExists)
+   {
+      if(!ReadVerifiedGlobal(highWaterKey, highWaterValue) ||
+         !ReadVerifiedGlobal(highWaterCommitKey, highWaterCommitValue) ||
+         !ReadVerifiedGlobal(highWaterMigrationKey, highWaterMigrationValue) ||
+         highWaterValue < 19700101.0 ||
+         highWaterValue > 99991231.0 ||
+         highWaterValue != MathFloor(highWaterValue) ||
+         !IsValidUtcRiskDayOrdinal((int)highWaterValue) ||
+         highWaterCommitValue != highWaterValue ||
+         highWaterMigrationValue != 1.0)
+      {
+         MarkLocalStateFailure("UTC_RISK_DAY_HIGH_WATER_READ_FAILED");
+         return false;
+      }
+      durableHighWater = (int)highWaterValue;
+      if(dayOrdinal < durableHighWater)
+      {
+         MarkLocalStateFailure("UTC_RISK_DAY_MOVED_BACKWARD");
+         return false;
+      }
+   }
+   else if(InpApproveRiskDayHighWaterUtcDay != day)
+   {
+      MarkLocalStateFailure("UTC_RISK_DAY_HIGH_WATER_APPROVAL_REQUIRED");
+      return false;
+   }
+
+   if(g_RiskDayOrdinal > 0 && durableHighWater != g_RiskDayOrdinal)
+   {
+      MarkLocalStateFailure("UTC_RISK_DAY_HIGH_WATER_STATE_MISMATCH");
+      return false;
+   }
+   if(g_RiskDayOrdinal > 0 && dayOrdinal < g_RiskDayOrdinal)
+   {
+      MarkLocalStateFailure("UTC_RISK_DAY_MOVED_BACKWARD");
+      return false;
+   }
+   if(day == g_RiskDay && g_DayStartEquity > 0.0)
+      return g_LocalStateHealthy;
+
+   int referenceRiskDayOrdinal = g_RiskDayOrdinal > 0 ?
+                                 g_RiskDayOrdinal : durableHighWater;
+   bool advancedFromReference = referenceRiskDayOrdinal > 0 &&
+                                dayOrdinal > referenceRiskDayOrdinal;
+   bool isExactNextDay = !advancedFromReference ||
+                         IsNextUtcRiskDay(referenceRiskDayOrdinal, dayOrdinal);
+   bool forwardGapApproved = g_RiskDayOrdinal == 0 &&
+                             highWaterExists &&
+                             InpApproveRiskDayForwardJumpUtcDay == day;
+   if(advancedFromReference && !isExactNextDay && !forwardGapApproved)
+   {
+      MarkLocalStateFailure("UTC_RISK_DAY_JUMP_FORWARD");
+      return false;
+   }
+   bool activeDayAdvanced = g_RiskDayOrdinal > 0 &&
+                            dayOrdinal > g_RiskDayOrdinal;
+   if(activeDayAdvanced && !g_BaselineVerified)
+   {
+      MarkLocalStateFailure("UTC_ROLLOVER_PRIOR_BASELINE_UNVERIFIED");
+      return false;
+   }
+
+   bool continuousRollover = activeDayAdvanced && isExactNextDay && g_BaselineVerified;
    string baseKey = BaselineGlobalKey(day);
    string haltKey = HaltGlobalKey(day);
    string verifiedKey = BaselineVerifiedGlobalKey(day);
@@ -1248,14 +1480,16 @@ bool UpdateUtcRiskDay()
    if(GlobalVariableCheck(baseKey))
    {
       double verifiedValue = 0.0;
+      bool hasVerifiedMarker = GlobalVariableCheck(verifiedKey);
       if(!ReadVerifiedGlobal(baseKey, baseline) || baseline <= 0.0 ||
-         (GlobalVariableCheck(verifiedKey) &&
-          !ReadVerifiedGlobal(verifiedKey, verifiedValue)))
+         (hasVerifiedMarker &&
+          (!ReadVerifiedGlobal(verifiedKey, verifiedValue) ||
+           !IsBinaryMarker(verifiedValue))))
       {
          MarkLocalStateFailure("DAILY_BASELINE_READ_FAILED");
          return false;
       }
-      verified = verifiedValue > 0.5;
+      verified = verifiedValue == 1.0;
 
       if(!verified && BaselineApprovalMatches(day, baseline))
       {
@@ -1291,15 +1525,27 @@ bool UpdateUtcRiskDay()
       }
    }
    double haltValue = 0.0;
-   if(GlobalVariableCheck(haltKey) && !ReadVerifiedGlobal(haltKey, haltValue))
+   if(GlobalVariableCheck(haltKey) &&
+      (!ReadVerifiedGlobal(haltKey, haltValue) ||
+       !IsBinaryMarker(haltValue)))
    {
       MarkLocalStateFailure("DAILY_HALT_READ_FAILED");
       return false;
    }
+   if(durableHighWater < dayOrdinal &&
+      !(highWaterExists ? PersistRiskDayHighWater(dayOrdinal) :
+                          PersistInitialRiskDayHighWater(dayOrdinal)))
+   {
+      MarkLocalStateFailure(
+         "UTC_RISK_DAY_HIGH_WATER_WRITE_OR_VERIFY_FAILED"
+      );
+      return false;
+   }
    g_RiskDay = day;
+   g_RiskDayOrdinal = dayOrdinal;
    g_DayStartEquity = baseline;
    g_BaselineVerified = verified;
-   g_DailyHalted = haltValue > 0.5;
+   g_DailyHalted = haltValue == 1.0;
    g_DailyPnL = AccountInfoDouble(ACCOUNT_EQUITY) - baseline;
    return true;
 }
@@ -1322,12 +1568,15 @@ bool SetDailyHalt(const bool halted)
 //+------------------------------------------------------------------+
 void SendHello()
 {
-   string fields = ",\"role\":\"MT5_EA\",\"ea_version\":\"4.00\"" +
+   string fields = ",\"role\":\"MT5_EA\"" +
+      ",\"ea_version\":" + J(QSX_EA_VERSION) +
       ",\"account_id\":" + J(AccountId()) +
       ",\"broker_server\":" + J(AccountInfoString(ACCOUNT_SERVER)) +
       ",\"account_trade_mode\":" + J(AccountTradeModeText()) +
       ",\"trade_allowed\":" + (AccountInfoInteger(ACCOUNT_TRADE_ALLOWED) ? "true" : "false") +
       ",\"expert_allowed\":" + (AccountInfoInteger(ACCOUNT_TRADE_EXPERT) ? "true" : "false") +
+      ",\"emergency_stop\":" + (InpEmergencyStop ? "true" : "false") +
+      ",\"session_mode\":" + J(SessionModeText()) +
       ",\"symbol\":" + J(_Symbol) +
       ",\"magic\":" + IntegerToString(InpMagicNumber) +
       ",\"config_hash\":" + J(InpConfigHash) +
@@ -2591,6 +2840,13 @@ void HandleCommand(const string &json)
                      shapeReason, correlationId);
       return;
    }
+   if(IsObservationOnlySession() && !IsObservationCommand(action))
+   {
+      SendNackValues(commandId, tradeId, action, "SHADOW_OBSERVATION_ONLY", 0,
+                     "local SHADOW session forbids broker mutation",
+                     correlationId);
+      return;
+   }
    if(action == "OPEN" && AccountMarginModeText() != "HEDGING")
    {
       RejectAndStore(commandId, tradeId, action, JsonGetString(json, "direction"),
@@ -2654,7 +2910,9 @@ void HandleHelloAck(const string &json)
    string shapeReason = "";
    string required[] = {"status", "server_id", "config_hash", "expected_account_id",
                         "expected_broker_server", "expected_account_trade_mode",
-                        "expected_symbol", "expected_magic", "allow_real", "deal_cursor"};
+                        "expected_ea_version", "expected_session_mode",
+                        "expected_symbol", "expected_magic", "allow_real",
+                        "deal_cursor"};
    for(int i = 0; i < ArraySize(required); i++)
    {
       if(!RequireUniqueField(json, required[i], shapeReason))
@@ -2675,6 +2933,8 @@ void HandleHelloAck(const string &json)
    string expectedAccount = JsonGetString(json, "expected_account_id");
    string expectedBrokerServer = JsonGetString(json, "expected_broker_server");
    string expectedAccountMode = JsonGetString(json, "expected_account_trade_mode");
+   string expectedEaVersion = JsonGetString(json, "expected_ea_version");
+   string expectedSessionMode = JsonGetString(json, "expected_session_mode");
    string expectedSymbol = JsonGetString(json, "expected_symbol");
    int expectedMagic = (int)JsonGetLong(json, "expected_magic");
    bool allowReal = JsonGetBool(json, "allow_real");
@@ -2685,21 +2945,26 @@ void HandleHelloAck(const string &json)
    bool identityOk = status == "ACCEPTED" && expectedAccount == AccountId() &&
                      expectedBrokerServer == AccountInfoString(ACCOUNT_SERVER) &&
                      expectedAccountMode == AccountTradeModeText() &&
+                     expectedEaVersion == QSX_EA_VERSION &&
                      expectedSymbol == _Symbol && expectedMagic == InpMagicNumber &&
                      configHash == InpConfigHash &&
                      ParseDealCursor(peerDealCursor, peerCursorTime, peerCursorDeal);
    bool modeOk = AccountTradeModeText() != "REAL" || (allowReal && InpPermitRealAccount);
-   bool permissionOk = AccountInfoInteger(ACCOUNT_TRADE_ALLOWED) &&
-                       AccountInfoInteger(ACCOUNT_TRADE_EXPERT) &&
-                       TerminalInfoInteger(TERMINAL_TRADE_ALLOWED);
-   if(!identityOk || !modeOk || !permissionOk)
+   bool sessionModeOk = expectedSessionMode == SessionModeText();
+   bool permissionOk = IsObservationOnlySession() ||
+                       (AccountInfoInteger(ACCOUNT_TRADE_ALLOWED) &&
+                        AccountInfoInteger(ACCOUNT_TRADE_EXPERT) &&
+                        TerminalInfoInteger(TERMINAL_TRADE_ALLOWED));
+   if(!identityOk || !modeOk || !sessionModeOk || !permissionOk)
    {
-      Print("[QSX4] HELLO_ACK rejected identity/mode/permissions; session closed");
+      Print("[QSX4] HELLO_ACK rejected identity/session/mode/permissions; session closed");
       DisconnectSocket();
       return;
    }
    g_Authenticated = true;
-   Print("[QSX4] Authenticated broker session accepted for ", AccountTradeModeText(), " account ", AccountId());
+   Print("[QSX4] Authenticated ", SessionModeText(),
+         " broker session accepted for ", AccountTradeModeText(),
+         " account ", AccountId());
    ResetBarPublicationState();
    if(!SendFullSnapshot(JsonGetString(json, "msg_id"), peerDealCursor))
    {
@@ -2871,6 +3136,14 @@ int OnInit()
 
    if(baselineApprovalDaySet != baselineApprovalEquitySet ||
       InpApproveBaselineEquity < 0.0 ||
+      (InpSessionMode != QSX_SESSION_SHADOW &&
+       InpSessionMode != QSX_SESSION_DEMO) ||
+      (InpApproveRiskDayHighWaterUtcDay != "" &&
+       StringLen(InpApproveRiskDayHighWaterUtcDay) != 10) ||
+      (InpApproveRiskDayForwardJumpUtcDay != "" &&
+       StringLen(InpApproveRiskDayForwardJumpUtcDay) != 10) ||
+      AccountId() == "0" ||
+      AccountInfoString(ACCOUNT_SERVER) == "" ||
       !IsLoopbackHost(InpHost) || InpAuthToken == "" || InpConfigHash == "" ||
       InpConfigHash == "UNCONFIGURED" ||
       InpPort < 1 || InpPort > 65535 || InpReconnectSec < 1 ||

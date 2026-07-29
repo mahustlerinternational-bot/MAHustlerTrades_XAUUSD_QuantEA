@@ -313,6 +313,7 @@ def test_daily_baseline_rollover_requires_verified_prior_state_and_durable_monot
     assert "RiskDayHighWaterCommitGlobalKey()" in body
     assert "RiskDayHighWaterMigrationGlobalKey()" in body
     assert "InpApproveRiskDayHighWaterUtcDay" in body
+    assert "InpApproveRiskDayForwardJumpUtcDay" in body
     assert 'MarkLocalStateFailure("UTC_RISK_DAY_MOVED_BACKWARD")' in body
     assert 'MarkLocalStateFailure("UTC_RISK_DAY_JUMP_FORWARD")' in body
     assert (
@@ -325,11 +326,21 @@ def test_daily_baseline_rollover_requires_verified_prior_state_and_durable_monot
     )
     assert "dayOrdinal < durableHighWater" in body
     assert "dayOrdinal < g_RiskDayOrdinal" in body
-    assert "IsNextUtcRiskDay(g_RiskDayOrdinal, dayOrdinal)" in body
     assert (
-        "bool continuousRollover = g_RiskDayOrdinal > 0 && "
-        "dayOrdinal > g_RiskDayOrdinal && "
-        "isExactNextDay && "
+        "referenceRiskDayOrdinal = g_RiskDayOrdinal > 0 ?"
+        in body
+    )
+    assert (
+        "IsNextUtcRiskDay(referenceRiskDayOrdinal, dayOrdinal)"
+        in body
+    )
+    assert "bool forwardGapApproved = g_RiskDayOrdinal == 0 &&" in body
+    assert (
+        "InpApproveRiskDayForwardJumpUtcDay == day"
+        in body
+    )
+    assert (
+        "bool continuousRollover = activeDayAdvanced && isExactNextDay && "
         "g_BaselineVerified;"
     ) in body
     assert "verified = continuousRollover;" in body
@@ -343,6 +354,58 @@ def test_daily_baseline_rollover_requires_verified_prior_state_and_durable_monot
     assert body.index("UTC_RISK_DAY_JUMP_FORWARD") < body.index(
         "BaselineGlobalKey(day)"
     )
+    assert body.index("IsValidUtcRiskDayOrdinal") < body.index(
+        "day == g_RiskDay"
+    )
+    assert body.index("highWaterCommitValue != highWaterValue") < body.index(
+        "day == g_RiskDay"
+    )
+    assert body.index("highWaterMigrationValue != 1.0") < body.index(
+        "day == g_RiskDay"
+    )
+    assert body.index(
+        "InpApproveRiskDayHighWaterUtcDay != day"
+    ) < body.index("PersistInitialRiskDayHighWater")
+
+    ordinal_start = SOURCE.index("bool RiskDayOrdinalToStart")
+    ordinal_end = SOURCE.index("\nbool IsValidUtcRiskDayOrdinal", ordinal_start)
+    ordinal_body = SOURCE[ordinal_start:ordinal_end]
+    assert "StructToTime(candidate)" in ordinal_body
+    assert "TimeToStruct(dayStart, normalized)" in ordinal_body
+    assert "normalized.year == candidate.year" in ordinal_body
+    assert "normalized.mon == candidate.mon" in ordinal_body
+    assert "normalized.day == candidate.day" in ordinal_body
+
+    next_start = SOURCE.index("bool IsNextUtcRiskDay")
+    next_end = SOURCE.index("\nstring UtcRiskDay", next_start)
+    next_body = SOURCE[next_start:next_end]
+    assert "RiskDayOrdinalToStart(previousOrdinal, previousStart)" in next_body
+    assert "previousStart + 86400" in next_body
+    assert "return currentOrdinal == nextOrdinal;" in next_body
+
+    persist_start = SOURCE.index("bool PersistRiskDayHighWater")
+    persist_end = SOURCE.index(
+        "\nbool PersistInitialRiskDayHighWater", persist_start
+    )
+    persist_body = SOURCE[persist_start:persist_end]
+    assert persist_body.index("SetVerifiedGlobal(commitKey, 0.0)") < (
+        persist_body.index("SetVerifiedGlobal(valueKey, (double)dayOrdinal)")
+    )
+    assert persist_body.index(
+        "SetVerifiedGlobal(valueKey, (double)dayOrdinal)"
+    ) < persist_body.index(
+        "SetVerifiedGlobal(commitKey, (double)dayOrdinal)"
+    )
+
+    initial_start = SOURCE.index("bool PersistInitialRiskDayHighWater")
+    initial_end = SOURCE.index("\nbool BaselineApprovalMatches", initial_start)
+    initial_body = SOURCE[initial_start:initial_end]
+    assert initial_body.index(
+        "SetVerifiedGlobal(migrationKey, 0.0)"
+    ) < initial_body.index("PersistRiskDayHighWater(dayOrdinal)")
+    assert initial_body.index(
+        "PersistRiskDayHighWater(dayOrdinal)"
+    ) < initial_body.index("SetVerifiedGlobal(migrationKey, 1.0)")
 
 
 def test_terminal_durable_namespaces_bind_broker_and_canonical_ownership_scope():
@@ -350,6 +413,27 @@ def test_terminal_durable_namespaces_bind_broker_and_canonical_ownership_scope()
     assert "string BrokerAccountScopeKey()" in SOURCE
     assert "string BrokerTupleScopeKey()" in SOURCE
     assert "AccountInfoString(ACCOUNT_SERVER)" in SOURCE
+    assert 'StringFormat("%08lX%08lX", forward, reverse)' in SOURCE
+    on_init = SOURCE[SOURCE.index("int OnInit()") :]
+    assert 'AccountId() == "0"' in on_init
+    assert 'AccountInfoString(ACCOUNT_SERVER) == ""' in on_init
+    tuple_scope_start = SOURCE.index("string BrokerTupleScopeKey()")
+    tuple_scope_end = SOURCE.index("\n}", tuple_scope_start)
+    tuple_scope_body = SOURCE[tuple_scope_start:tuple_scope_end]
+    for token in (
+        "AccountInfoString(ACCOUNT_SERVER)",
+        "AccountId()",
+        "_Symbol",
+        "InpMagicNumber",
+        "return StableScopeDigest(identity);",
+    ):
+        assert token in tuple_scope_body
+
+    account_scope_start = SOURCE.index("string BrokerAccountScopeKey()")
+    account_scope_end = SOURCE.index("\n}", account_scope_start)
+    account_scope_body = SOURCE[account_scope_start:account_scope_end]
+    assert "AccountInfoString(ACCOUNT_SERVER)" in account_scope_body
+    assert "AccountId()" in account_scope_body
 
     for function_name in (
         "BaselineGlobalKey",
@@ -376,6 +460,22 @@ def test_terminal_durable_namespaces_bind_broker_and_canonical_ownership_scope()
         start = SOURCE.index(f"string {function_name}")
         end = SOURCE.index("\n}", start)
         assert "BrokerTupleScopeKey()" in SOURCE[start:end]
+
+    max_login = 19
+    digest = 16
+    account_scope = max_login + 1 + digest
+    tuple_scope = digest
+    account_keys = (
+        len("QSX4_BASE_OK_") + account_scope + 1 + 10,
+        len("QSX4_DAY_HWC_") + account_scope,
+        len("QSX4_DAY_HWM_") + account_scope,
+    )
+    tuple_keys = (
+        len("QSX4_CURSOR_DEAL_HI_") + tuple_scope,
+        len("QSX4_CURSOR_COMMIT_") + tuple_scope,
+        len("QSX4_PVC_") + tuple_scope + 1 + 20,
+    )
+    assert max(*account_keys, *tuple_keys) <= 63
 
 
 def test_persisted_authorization_markers_accept_only_exact_binary_values():
@@ -416,6 +516,15 @@ def test_observation_only_is_default_and_locally_fences_every_mutating_command()
         "HandleCloseAll(json",
     ):
         assert body.index(fence) < body.index(handler)
+
+
+def test_hello_ack_rejects_before_authentication_state_is_published():
+    start = SOURCE.index("void HandleHelloAck")
+    end = SOURCE.index("\nvoid ProcessInbound", start)
+    body = SOURCE[start:end]
+    rejection = "if(!identityOk || !modeOk || !sessionModeOk || !permissionOk)"
+    assert rejection in body
+    assert body.index(rejection) < body.index("g_Authenticated = true")
 
 
 def test_command_journal_is_verified_before_every_broker_mutation():

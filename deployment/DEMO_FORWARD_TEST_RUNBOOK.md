@@ -28,6 +28,12 @@ Do not start the observation clock until all items are true:
 - `CHECK` passes; `SHADOW` authenticates the exact demo account, broker server,
   symbol, magic and protocol; the initial atomic snapshot reconciles to zero
   blocking differences while MT5 AutoTrading remains off.
+- For Area 6, the attached EA records `InpSessionMode=QSX_SESSION_SHADOW` and
+  `InpEmergencyStop=true`. Verify machine UTC, set
+  `InpApproveRiskDayHighWaterUtcDay` to the exact current UTC `YYYY-MM-DD` for
+  the one-time broker/account namespace migration, retain successful
+  read-back evidence, then clear that approval input and restart before the
+  observation window.
 - The pinned demo account reports `HEDGING`. The account-complete snapshot
   exposes every position and pending order, and no foreign symbol/magic
   exposure remains as a blocking reconciliation difference.
@@ -39,6 +45,21 @@ UTC risk date in the forward-test evidence package. The supplied systemd unit
 is SHADOW-only; DEMO requires a separately reviewed, explicit demo service
 invocation of `python -m python_swarm.runtime_app --mode demo` with the
 protected `QSX_CONFIG` and `QSX_DATA_DIR`.
+
+Before a later DEMO window, explicitly set
+`InpSessionMode=QSX_SESSION_DEMO` and `InpEmergencyStop=false`, then prove the
+gateway rejects a SHADOW/DEMO mismatch and rejects DEMO when account, expert,
+or terminal trading permission is absent. These inputs never authorize a REAL
+account; this release rejects REAL at both launcher and gateway boundaries.
+
+If a later cold restart follows a multi-day shutdown, first leave
+`InpApproveRiskDayForwardJumpUtcDay` empty and retain the expected fail-closed
+evidence. Verify current UTC independently, set that input to the exact
+current `YYYY-MM-DD`, and restart. The EA may advance the committed day but
+must expose the new baseline as unverified. Record the baseline equity, then
+use the separate exact baseline day/equity approval on a subsequent restart.
+Clear both approvals after verified read-back. Never use the forward-gap
+approval while the EA remains continuously active.
 
 ## 2. Minimum observation window
 
