@@ -1,0 +1,35 @@
+.git/
+.gitignore
+.venv/
+.venv-*/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+
+.env
+.env.*
+!deployment/.env.example
+deployment/.env
+
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+RECOVERY_*/
+journal_db/
+journal_db_sim/
+market_data/
+backtest_results/
+logs/
+var/
+*.db*
+*.log
+*.pid
+
+QUANT XAUUSD EABOT.txt
+QUICK_START.sh
+docs/
+tests/
+python_swarm/Qwen Studio_files/

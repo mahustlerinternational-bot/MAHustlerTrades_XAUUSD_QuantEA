@@ -1,0 +1,59 @@
+{
+  "schema_version": 2,
+  "mode": "shadow",
+  "system": {
+    "symbol": "XAUUSD",
+    "magic_number": 202412,
+    "instance_id": "xau-shadow-observer",
+    "log_level": "INFO",
+    "expected_account_id": "${QSX_EXPECTED_ACCOUNT_ID}",
+    "expected_broker_server": "${QSX_EXPECTED_BROKER_SERVER}",
+    "expected_account_trade_mode": "DEMO",
+    "permit_real_account": false
+  },
+  "ipc": {
+    "host": "127.0.0.1",
+    "port": 9876,
+    "heartbeat_timeout_s": 15,
+    "max_message_bytes": 16384,
+    "auth_secret_env": "QSX_IPC_AUTH_SECRET"
+  },
+  "risk": {
+    "max_risk_pct": 1.0,
+    "daily_max_drawdown_pct": 3.0,
+    "max_total_risk_pct": 1.0,
+    "max_open_positions": 1,
+    "consecutive_loss_halt": 3
+  },
+  "confluence": {
+    "base_threshold_pct": 75.0,
+    "min_agents_agreeing": 3,
+    "hard_floor_pct": 68.0,
+    "hard_ceiling_pct": 90.0
+  },
+  "providers": {
+    "macro": {
+      "enabled": false,
+      "source": "disabled",
+      "max_age_s": 300
+    },
+    "intermarket": {
+      "enabled": false,
+      "source": "disabled",
+      "max_age_s": 30
+    },
+    "unsafe_allow_technical_without_macro": false
+  },
+  "integrations": {
+    "telegram": false,
+    "discord": false,
+    "website": false
+  },
+  "storage": {
+    "data_dir": "${QSX_DATA_DIR}",
+    "sqlite_busy_timeout_ms": 5000
+  },
+  "agents": {
+    "enabled": [1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 13, 16, 17, 18, 19, 20, 21]
+  }
+}

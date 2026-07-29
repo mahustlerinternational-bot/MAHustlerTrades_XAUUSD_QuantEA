@@ -1,0 +1,5 @@
+# QUANT-SWARM-XAU runtime dependencies (Python 3.12 reference platform).
+# Keep the production image small: ChromaDB, LangChain and Redis are not part
+# of the canonical trading path and must not be pulled into a broker runtime.
+aiohttp>=3.10,<4
+numpy>=1.26,<3

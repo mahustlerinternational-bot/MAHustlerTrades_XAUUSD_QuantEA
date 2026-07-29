@@ -1,0 +1,62 @@
+# Install as /etc/systemd/system/quant_swarm_xau.service after reviewing paths.
+# This unit is deliberately SHADOW-only.  DEMO is a separate, explicit manual
+# promotion and real-account launch is not exposed by this release.
+[Unit]
+Description=QUANT-SWARM-XAU MT5 Control Plane
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=trader
+Group=trader
+UMask=0077
+WorkingDirectory=/opt/quant-swarm-xau
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONNOUSERSITE=1
+Environment=QSX_MODE=shadow
+Environment=QSX_CONFIG=/etc/quant-swarm-xau/runtime.json
+Environment=QSX_DATA_DIR=/var/lib/quant-swarm-xau
+EnvironmentFile=-/etc/quant-swarm-xau/quant-swarm.env
+ConfigurationDirectory=quant-swarm-xau
+ConfigurationDirectoryMode=0755
+StateDirectory=quant-swarm-xau
+StateDirectoryMode=0700
+RuntimeDirectory=quant-swarm-xau
+RuntimeDirectoryMode=0700
+ExecStartPre=/usr/bin/test -x /opt/quant-swarm-xau/.venv/bin/python3
+ExecStartPre=/usr/bin/test -r ${QSX_CONFIG}
+ExecStart=/opt/quant-swarm-xau/.venv/bin/python3 -m python_swarm.runtime_app --mode shadow --config ${QSX_CONFIG}
+Restart=on-failure
+RestartSec=10s
+TimeoutStopSec=30s
+KillSignal=SIGTERM
+LimitNOFILE=4096
+StandardOutput=journal
+StandardError=journal
+
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectHostname=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+RemoveIPC=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths=/var/lib/quant-swarm-xau /run/quant-swarm-xau
+
+[Install]
+WantedBy=multi-user.target
