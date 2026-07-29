@@ -478,6 +478,52 @@ def test_terminal_durable_namespaces_bind_broker_and_canonical_ownership_scope()
     assert max(*account_keys, *tuple_keys) <= 63
 
 
+def test_terminal_namespace_digest_is_a_pinned_persistence_abi():
+    hash_start = SOURCE.index("uint StableScopeHash")
+    hash_end = SOURCE.index("\n}", hash_start)
+    hash_body = SOURCE[hash_start:hash_end]
+    assert "int index = reverse ? length - 1 - i : i;" in hash_body
+    assert "hash ^= (uint)StringGetCharacter(value, index);" in hash_body
+    assert "hash *= 16777619;" in hash_body
+
+    digest_start = SOURCE.index("string StableScopeDigest")
+    digest_end = SOURCE.index("\n}", digest_start)
+    digest_body = SOURCE[digest_start:digest_end]
+    assert "StableScopeHash(value, (uint)2166136261, false)" in digest_body
+    assert "StableScopeHash(value, (uint)2246822519, true)" in digest_body
+    assert 'StringFormat("%08lX%08lX", forward, reverse)' in digest_body
+
+    def stable_scope_hash(value: str, seed: int, reverse: bool) -> int:
+        code_units = [ord(character) for character in value]
+        if reverse:
+            code_units.reverse()
+        result = seed
+        for code_unit in code_units:
+            result = ((result ^ code_unit) * 16777619) & 0xFFFFFFFF
+        return result
+
+    def stable_scope_digest(value: str) -> str:
+        forward = stable_scope_hash(value, 2166136261, False)
+        reverse = stable_scope_hash(value, 2246822519, True)
+        return f"{forward:08X}{reverse:08X}"
+
+    # These ASCII vectors are the durable namespace ABI. A changed value means
+    # existing terminal state would become unreachable and requires migration.
+    golden_vectors = {
+        "MetaQuotes-Demo|12345678": "147F2649CD71976B",
+        "MetaQuotes-Demo|12345678|XAUUSD|121221": "907EEC5272E5C2EE",
+        "Broker-Server-Live|9223372036854775807": "86A121293A0EA59B",
+        (
+            "Broker-Server-Live|9223372036854775807|"
+            "XAUUSDm|2147483647"
+        ): "3B65E3D86F98327E",
+    }
+    for identity, expected_digest in golden_vectors.items():
+        digest = stable_scope_digest(identity)
+        assert digest == expected_digest
+        assert len(digest) == 16
+
+
 def test_persisted_authorization_markers_accept_only_exact_binary_values():
     assert "bool IsBinaryMarker(const double value)" in SOURCE
     start = SOURCE.index("bool UpdateUtcRiskDay")
