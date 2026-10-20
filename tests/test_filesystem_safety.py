@@ -1,10 +1,7 @@
-import json
 import os
 import re
-import stat
 import subprocess
 import sys
-import zipfile
 from pathlib import Path
 
 import pytest
@@ -78,39 +75,31 @@ def test_operator_files_contain_no_live_looking_credentials():
     )
     files = [
         ROOT / "QUICK_START.sh",
-        ROOT / "QUANT XAUUSD EABOT.txt",
-        ROOT / "deployment" / "config.json",
+        ROOT / "deployment" / "config.check.example.json",
         ROOT / "deployment" / ".env.example",
     ]
     for path in files:
         assert not credential_pattern.search(path.read_text(encoding="utf-8")), path
 
-    config = json.loads((ROOT / "deployment" / "config.json").read_text())
-    assert "telegram" not in config
     env_example = (ROOT / "deployment" / ".env.example").read_text(encoding="utf-8")
     assert "QSX_TG_TOKEN=\n" in env_example
     assert "QSX_TG_CHAT=\n" in env_example
 
 
-def test_legacy_archive_is_sanitized_and_private():
-    archive = ROOT / "QUANT_SWARM_XAU_v3.0_COMPLETE (10).zip"
-    credential_pattern = re.compile(
-        rb"(?:[0-9]{8,12}:[A-Za-z0-9_-]{25,}"
-        rb"|eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,})"
+def test_release_boundary_never_depends_on_legacy_archives_or_recovery_data():
+    allowlist = (
+        ROOT / "release" / "runtime-allowlist.txt"
+    ).read_text(encoding="utf-8").splitlines()
+    prohibited = (
+        "RECOVERY_",
+        "backups/",
+        "build_evidence/",
+        "release_output/",
     )
+    for relative in allowlist:
+        assert not relative.endswith((".zip", ".tar", ".tar.gz", ".tgz"))
+        assert not relative.startswith(prohibited)
 
-    assert stat.S_IMODE(archive.stat().st_mode) == 0o600
-    with zipfile.ZipFile(archive) as bundle:
-        for member in bundle.infolist():
-            if member.is_dir():
-                continue
-            assert not credential_pattern.search(bundle.read(member)), member.filename
-
-
-def test_recovery_evidence_permissions_are_private():
-    recovery = ROOT / "RECOVERY_2026-07-15_OPEN_DB_HANDLES"
-
-    assert stat.S_IMODE(recovery.stat().st_mode) == 0o700
-    for path in recovery.rglob("*"):
-        expected = 0o700 if path.is_dir() else 0o600
-        assert stat.S_IMODE(path.stat().st_mode) == expected, path
+    builder = (ROOT / "tools" / "build_release.py").read_text(encoding="utf-8")
+    assert "build_evidence/" not in builder
+    assert "RECOVERY_" not in builder

@@ -52,7 +52,7 @@ def test_mode_and_schema_are_explicit_and_default_is_safe():
 def test_unknown_keys_and_wrong_types_are_rejected():
     with pytest.raises(ConfigError, match="unknown keys"):
         RuntimeConfig.from_mapping({**minimal(), "surprise": True})
-    with pytest.raises(ConfigError, match="must be a boolean"):
+    with pytest.raises(ConfigError, match="unknown keys"):
         RuntimeConfig.from_mapping(
             {**minimal(), "system": {"permit_real_account": "false"}}
         )
@@ -158,27 +158,17 @@ def test_broker_ipc_is_loopback_only_and_requires_strong_auth(tmp_path):
         RuntimeConfig.from_mapping(raw, environ={"QSX_IPC_SECRET": "too-short"})
 
 
-def test_real_account_requires_three_exact_independent_authorizations(tmp_path):
-    raw = broker_config(tmp_path, mode="live", trade_mode="REAL")
-    raw["system"].update(
-        {
-            "expected_broker_server": "Broker-Real",
-            "permit_real_account": True,
-            "real_authorization_env": "QSX_REAL_ACCOUNT_AUTHORIZATION",
-        }
-    )
-    with pytest.raises(ConfigError, match="account-bound"):
-        RuntimeConfig.from_mapping(raw, environ=BROKER_ENV)
-
-    environment = {
-        **BROKER_ENV,
-        "QSX_REAL_ACCOUNT_AUTHORIZATION": (
-            "AUTHORIZE_REAL_ACCOUNT:123456:Broker-Real"
-        ),
-    }
-    config = RuntimeConfig.from_mapping(raw, environ=environment)
-    assert config.mode is RuntimeMode.LIVE
-    assert config.system.permit_real_account
+def test_real_account_and_live_mode_are_not_available_in_this_release(tmp_path):
+    with pytest.raises(ConfigError, match="config.mode"):
+        RuntimeConfig.from_mapping(
+            broker_config(tmp_path, mode="live", trade_mode="REAL"),
+            environ=BROKER_ENV,
+        )
+    with pytest.raises(ConfigError, match="REAL accounts are unsupported"):
+        RuntimeConfig.from_mapping(
+            broker_config(tmp_path, mode="demo", trade_mode="REAL"),
+            environ=BROKER_ENV,
+        )
 
 
 def test_demo_requires_macro_protection_or_visible_unsafe_override(tmp_path):
@@ -241,7 +231,7 @@ def test_load_config_expands_only_declared_environment_references(tmp_path):
 def test_committed_configs_use_the_canonical_schema_and_never_execute_by_default(tmp_path):
     root = Path(__file__).resolve().parents[1]
     environment = {"QSX_DATA_DIR": str(tmp_path / "state")}
-    for name in ("config.json", "config.small-account.json"):
+    for name in ("config.check.example.json", "config.small-account.json"):
         config = load_runtime_config(root / "deployment" / name, environ=environment)
         assert config.schema_version == 2
         assert config.mode is RuntimeMode.CHECK

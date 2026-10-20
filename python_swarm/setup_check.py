@@ -53,7 +53,7 @@ CANONICAL_MODULES: tuple[str, ...] = (
 )
 
 REQUIRED_DEPENDENCIES: tuple[str, ...] = ("aiohttp", "numpy")
-BROKER_MODES = frozenset({RuntimeMode.SHADOW, RuntimeMode.DEMO, RuntimeMode.LIVE})
+BROKER_MODES = frozenset({RuntimeMode.SHADOW, RuntimeMode.DEMO})
 
 
 class SetupCheckError(RuntimeError):
@@ -110,10 +110,9 @@ def assert_broker_deployment_integrity(
         )
     if os.geteuid() == 0:
         raise DeploymentIntegrityError("broker modes must not run as root")
-    if not (3, 11) <= sys.version_info[:2] <= (3, 12):
+    if sys.version_info[:2] != (3, 12):
         raise DeploymentIntegrityError(
-            "broker modes require a supported Python 3.11-3.12 interpreter; "
-            "the frozen reference platform is Python 3.12"
+            "broker modes require the frozen CPython 3.12 interpreter"
         )
 
     root = Path(project_root or Path(__file__).resolve().parents[1])

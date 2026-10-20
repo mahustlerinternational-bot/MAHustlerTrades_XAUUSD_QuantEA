@@ -1,0 +1,11 @@
+QUANT-SWARM-XAU CREDENTIAL NOTICE
+
+This file intentionally contains no credentials.
+
+Credentials previously stored in this project must be treated as compromised.
+Follow SECURITY_ACTION_REQUIRED.md before enabling any integration or MT5
+AutoTrading.
+
+Runtime secrets belong only in a local, permission-restricted environment file
+or an operating-system secret manager. Use deployment/.env.example as the list
+of supported variable names. Never place real values in this file.

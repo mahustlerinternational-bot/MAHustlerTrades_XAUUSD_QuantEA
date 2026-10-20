@@ -8,12 +8,12 @@ from python_swarm.runtime_paths import ProcessLockError, RuntimePathError, Runti
 def test_resolution_is_mode_isolated_and_has_no_io(tmp_path, monkeypatch):
     root = tmp_path / "runtime-data"
     monkeypatch.setenv("QSX_DATA_DIR", str(root))
-    live = RuntimePaths.resolve("live", instance_id="gold-main")
+    demo = RuntimePaths.resolve("demo", instance_id="gold-main")
     test = RuntimePaths.resolve("test", instance_id="gold-main")
 
-    assert live.instance_root == root / "live" / "gold-main"
+    assert demo.instance_root == root / "demo" / "gold-main"
     assert test.instance_root == root / "test" / "gold-main"
-    assert live.instance_root != test.instance_root
+    assert demo.instance_root != test.instance_root
     assert not root.exists(), "path resolution/import must not create state"
 
 
@@ -35,8 +35,8 @@ def test_explicit_state_subdir_and_database_path_api(tmp_path):
     assert not db.exists()
 
 
-def test_paths_reject_traversal_and_live_cleanup(tmp_path):
-    paths = RuntimePaths.resolve("live", data_dir=tmp_path)
+def test_paths_reject_traversal_and_broker_cleanup(tmp_path):
+    paths = RuntimePaths.resolve("demo", data_dir=tmp_path)
     with pytest.raises(RuntimePathError):
         paths.state_subdir("../journal_db_sim")
     with pytest.raises(RuntimePathError):

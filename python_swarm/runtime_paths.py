@@ -215,7 +215,7 @@ class RuntimePaths:
     def assert_cleanup_allowed(self, path: str | Path) -> Path:
         """Allow cleanup only in simulation, replay, or test instance subpaths."""
 
-        if self.mode in {RuntimeMode.LIVE, RuntimeMode.DEMO, RuntimeMode.SHADOW}:
+        if self.mode in {RuntimeMode.DEMO, RuntimeMode.SHADOW}:
             raise RuntimePathError(f"cleanup is forbidden in {self.mode.value} mode")
         return self.assert_managed_path(path)
 

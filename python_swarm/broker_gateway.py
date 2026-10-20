@@ -423,13 +423,9 @@ class GatewayConfig:
             raise ValueError("port must be in [0,65535]")
         if self.expected_trade_mode is BrokerTradeMode.CONTEST:
             raise ValueError("contest accounts are not authorised")
-        if (
-            self.expected_trade_mode is BrokerTradeMode.REAL
-            or self.expected.allow_real_account
-        ):
+        if self.expected_trade_mode is BrokerTradeMode.REAL:
             raise ValueError(
-                "REAL accounts are not supported by this release; "
-                "real-account authority must remain false"
+                "REAL accounts are not supported by this release"
             )
         if not 512 <= self.max_frame_bytes <= 65_536:
             raise ValueError("frame bound must be in [512,65536]")
@@ -1159,7 +1155,7 @@ class BrokerGateway(BrokerPort, ReconciliationBrokerPort):
             "expected_session_mode": self.config.session_mode.value,
             "expected_symbol": self.config.expected.symbol,
             "expected_magic": self.config.expected.magic,
-            "allow_real": self.config.expected.allow_real_account,
+            "allow_real": False,
             "deal_cursor": cursor,
             "reason": "; ".join(mismatches),
         }

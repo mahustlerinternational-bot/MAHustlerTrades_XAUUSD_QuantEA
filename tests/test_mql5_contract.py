@@ -96,7 +96,6 @@ def test_hello_ack_must_authorize_identity_mode_config_and_permissions():
         "expected_ea_version",
         "expected_session_mode",
         "peerDealCursor",
-        "InpPermitRealAccount",
         "InpSessionMode",
         "configHash == InpConfigHash",
         "TerminalInfoInteger(TERMINAL_TRADE_ALLOWED)",
@@ -105,6 +104,9 @@ def test_hello_ack_must_authorize_identity_mode_config_and_permissions():
     assert "if(!identityOk || !modeOk || !sessionModeOk || !permissionOk)" in SOURCE
     assert "bool permissionOk = IsObservationOnlySession() ||" in SOURCE
     assert "expectedEaVersion == QSX_EA_VERSION" in SOURCE
+    assert "InpPermitRealAccount" not in SOURCE
+    assert 'bool modeOk = AccountTradeModeText() != "REAL" && !allowReal;' in SOURCE
+    assert 'if(AccountTradeModeText() == "REAL")' in SOURCE
 
 
 def test_socket_send_handles_partial_writes_and_inbound_frames_are_bounded():

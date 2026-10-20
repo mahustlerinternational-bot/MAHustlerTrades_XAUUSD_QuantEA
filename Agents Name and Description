@@ -1,0 +1,39 @@
+QUANT-SWARM-XAU CANONICAL 21-AGENT ROSTER
+
+Status: v4.0.0-rc2 remediation baseline
+Authority: docs/CANONICAL_ARCHITECTURE.md
+
+The agents are logical bounded components, not independent processes. Adapters
+such as MT5 transport, storage, Telegram, Discord, website delivery, and the
+dashboard do not consume agent numbers.
+
+01. Orchestrator — composition, supervision, readiness, and scheduling
+02. Tick Streamer — broker ticks, completed bars, and immutable snapshots
+03. Regime Detector — deterministic eight-regime classification
+04. HTF Liquidity Trap — higher-timeframe liquidity-trap strategy
+05. Trendline Breakout — confirmed break-and-retest strategy
+06. CRT Engine — candle-range and liquidity-sweep strategy
+07. ICT/SMC Core — structure, order-block, and fair-value-gap strategy
+08. VPVR/POC — volume-profile and point-of-control strategy
+09. Asia Session Sweep — Asia-range sweep strategy
+10. News/Sentiment — strategy requiring genuine Agent 14 context
+11. Mean Reversion / Vol Bands — bounded volatility-band strategy
+12. Correlation Deflection — strategy requiring genuine Agent 15 context
+13. Wyckoff Schematic — phase and schematic strategy
+14. Macro Catalyst Monitor — calendar coverage, freshness, and freeze context
+15. Intermarket Watcher — DXY, US10Y, and US30 evidence and freshness
+16. Confluence Engine — unique-agent directional fusion and target planning
+17. Entry Trigger — time, quote, spread, MTF, and geometry validation
+18. Risk Manager — broker-aware budgets, reservations, and hard limits
+19. Lifecycle Manager — confirmed partials, breakeven, trailing, and closing
+20. Continuous Learner — governed PMA and approved versioned weights
+21. Resilience Controller — disconnect handling, readiness, and reconciliation
+
+Only Agents 04 through 13 vote. A selected direction requires at least three
+distinct eligible strategy agents. Agent 10 is disabled without fresh Agent 14
+data. Agent 12 is disabled without fresh Agent 15 data. Unknown macro-calendar
+coverage blocks new execution by default.
+
+Legacy source comments that assign Time Guard, MTF synthesis, Telegram, macro,
+or intermarket duties to other numbers are historical and non-normative. Those
+modules are not canonical broker-runtime entry points.

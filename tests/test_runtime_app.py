@@ -96,7 +96,6 @@ def config_mapping(
                 "expected_account_id": account_id,
                 "expected_broker_server": "Broker-Demo",
                 "expected_account_trade_mode": "DEMO",
-                "permit_real_account": False,
             }
         )
         raw["ipc"] = {"auth_secret_env": "QSX_IPC_SECRET"}
@@ -526,7 +525,7 @@ def test_effective_hash_is_semantic_deterministic_and_secret_free(tmp_path):
 
 
 def test_launcher_rejects_live_and_exact_mode_mismatch_before_startup(tmp_path):
-    with pytest.raises(RuntimeModeError, match="only check/shadow/demo"):
+    with pytest.raises(RuntimeModeError, match="unsupported canonical launch mode"):
         build_runtime_app(mode="live", config_path=tmp_path / "missing.json")
 
     path = write_config(tmp_path, config_mapping("check", tmp_path / "state"))

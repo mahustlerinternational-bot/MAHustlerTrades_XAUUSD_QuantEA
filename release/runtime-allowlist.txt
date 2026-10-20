@@ -39,4 +39,5 @@ python_swarm/strategy_pipeline.py
 python_swarm/trade_ledger.py
 python_swarm/trading_policies.py
 python_swarm/version.py
+release/native-mql5-build-contract.json
 server_setup.sh

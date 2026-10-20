@@ -73,7 +73,10 @@ Only `READY` may create a risk reservation or an OPEN command. Startup and recon
 - required provider-policy satisfaction;
 - zero unresolved blocking reconciliation differences.
 
-Default invocation is non-trading. Demo or live command capability requires an explicit mode. Real-capital accounts remain disabled unless a separate explicit live-account permission is configured.
+Default invocation is non-trading. DEMO command capability requires an
+explicit promotion on both sides of the protocol. RC2 exposes no LIVE launcher,
+and the gateway rejects REAL accounts and real-account authority even when
+constructed directly.
 
 The broker protocol pins the local EA and Python gateway to the same
 two-value session mode:

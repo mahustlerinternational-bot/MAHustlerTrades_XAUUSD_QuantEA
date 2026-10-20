@@ -39,7 +39,7 @@ except ImportError:  # pragma: no cover - legacy flat-import compatibility
 ZERO = Decimal("0")
 ONE = Decimal("1")
 HUNDRED = Decimal("100")
-BROKER_MODES = frozenset({"shadow", "demo", "live"})
+BROKER_MODES = frozenset({"shadow", "demo"})
 CANONICAL_STRATEGY_IDS = tuple(range(4, 14))
 if tuple(STRATEGY_AGENT_IDS) != CANONICAL_STRATEGY_IDS:  # pragma: no cover
     raise RuntimeError("canonical roster must expose strategy Agents 04 through 13")
@@ -76,7 +76,6 @@ class DataMode(StrEnum):
     CHECK = "check"
     SHADOW = "shadow"
     DEMO = "demo"
-    LIVE = "live"
     SIMULATION = "simulation"
     REPLAY = "replay"
     TEST = "test"
@@ -499,7 +498,7 @@ class CanonicalMarketSnapshot:
         if self.bid % self.tick_size or self.ask % self.tick_size:
             raise ValueError("snapshot quotes must be aligned to broker tick_size")
         if self.mode.value in BROKER_MODES and self.market_source is not MarketSource.BROKER:
-            raise ValueError("shadow/demo/live snapshots must be broker-derived")
+            raise ValueError("shadow/demo snapshots must be broker-derived")
         if self.mode is DataMode.REPLAY and self.market_source is not MarketSource.REPLAY:
             raise ValueError("replay mode requires replay provenance")
         for timeframe in ("h1", "h4", "d1", "m15", "m5", "m1"):

@@ -31,7 +31,7 @@ class ProviderSafetyError(RuntimeError):
 
 
 def current_mode() -> str:
-    return os.environ.get("QSX_MODE", "live").strip().lower() or "live"
+    return os.environ.get("QSX_MODE", "broker").strip().lower() or "broker"
 
 
 def ensure_simulation_source_allowed(mode: Optional[str] = None) -> None:

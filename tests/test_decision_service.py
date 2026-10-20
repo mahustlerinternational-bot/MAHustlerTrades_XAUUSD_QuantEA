@@ -130,7 +130,7 @@ def make_market(**changes) -> CanonicalMarketSnapshot:
         "snapshot_id": "snapshot-0001",
         "symbol": "XAUUSD",
         "captured_at_ms": NOW,
-        "mode": DataMode.LIVE,
+        "mode": DataMode.DEMO,
         "market_source": MarketSource.BROKER,
         "bid": Decimal("2000.0"),
         "ask": Decimal("2000.1"),

@@ -82,7 +82,11 @@ if [[ ! -x "$PY" ]]; then
 fi
 
 export QSX_MODE="$mode"
-export QSX_CONFIG="${QSX_CONFIG:-$ROOT/deployment/config.json}"
+if [[ -z "${QSX_CONFIG:-}" ]]; then
+  printf 'QSX_CONFIG is required; select an explicit protected schema-v2 JSON file.\n' >&2
+  exit 1
+fi
+export QSX_CONFIG
 if [[ "$mode" == "check" ]]; then
   export QSX_DATA_DIR="${QSX_DATA_DIR:-$ROOT/var}"
 elif [[ -z "${QSX_DATA_DIR:-}" ]]; then
@@ -90,7 +94,7 @@ elif [[ -z "${QSX_DATA_DIR:-}" ]]; then
   exit 1
 fi
 
-if [[ ! -f "$QSX_CONFIG" || ! -r "$QSX_CONFIG" ]]; then
+if [[ -L "$QSX_CONFIG" || ! -f "$QSX_CONFIG" || ! -r "$QSX_CONFIG" ]]; then
   printf 'Runtime configuration is missing or unreadable: %s\n' "$QSX_CONFIG" >&2
   exit 1
 fi

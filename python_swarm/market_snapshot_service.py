@@ -260,8 +260,8 @@ class MarketSnapshotAssemblerConfig:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "mode", DataMode(self.mode))
-        if self.mode not in {DataMode.SHADOW, DataMode.DEMO, DataMode.LIVE}:
-            raise ValueError("broker snapshot assembly is only for shadow/demo/live")
+        if self.mode not in {DataMode.SHADOW, DataMode.DEMO}:
+            raise ValueError("broker snapshot assembly is only for shadow/demo")
         for name in (
             "maximum_tick_age_ms",
             "maximum_account_age_ms",

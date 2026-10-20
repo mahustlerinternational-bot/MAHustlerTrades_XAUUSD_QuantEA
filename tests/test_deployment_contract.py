@@ -20,7 +20,7 @@ def _start_env(tmp_path: Path, **changes: str) -> dict[str, str]:
         **os.environ,
         "QSX_ENV_FILE": str(tmp_path / "absent.env"),
         "QSX_PYTHON_BIN": "/bin/echo",
-        "QSX_CONFIG": str(ROOT / "deployment" / "config.json"),
+        "QSX_CONFIG": str(ROOT / "deployment" / "config.check.example.json"),
         "QSX_DATA_DIR": str(tmp_path / "data"),
         **changes,
     }
@@ -39,7 +39,7 @@ def test_start_wrapper_only_executes_canonical_runtime(tmp_path):
     assert completed.returncode == 0, completed.stderr
     assert completed.stdout.strip() == (
         "-m python_swarm.runtime_app --mode check --config "
-        f"{ROOT / 'deployment' / 'config.json'}"
+        f"{ROOT / 'deployment' / 'config.check.example.json'}"
     )
 
 
@@ -76,7 +76,9 @@ def test_environment_file_is_parsed_as_data_not_executed(tmp_path):
     env_file = tmp_path / "runtime.env"
     sentinel = tmp_path / "must-not-exist"
     env_file.write_text(
-        "QSX_CONFIG=" + str(ROOT / "deployment" / "config.json") + "\n"
+        "QSX_CONFIG="
+        + str(ROOT / "deployment" / "config.check.example.json")
+        + "\n"
         "QSX_DATA_DIR=" + str(tmp_path / "data") + "\n"
         "UNTRUSTED=$(touch " + str(sentinel) + ")\n",
         encoding="utf-8",
@@ -140,7 +142,7 @@ def test_setup_report_fails_when_a_required_module_cannot_import(tmp_path, monke
     monkeypatch.setattr(setup_check.importlib, "import_module", broken_import)
     report = setup_check.run_setup_check(
         mode="check",
-        config_path=ROOT / "deployment" / "config.json",
+        config_path=ROOT / "deployment" / "config.check.example.json",
         environ={"QSX_DATA_DIR": str(tmp_path / "data")},
     )
 
@@ -286,15 +288,16 @@ def test_docker_default_is_nonroot_canonical_check():
 
     assert "USER trader" in text
     assert "WORKDIR /opt/quant-swarm-xau\n" in text
-    assert 'QSX_CONFIG=/opt/quant-swarm-xau/deployment/config.json' in text
+    assert "QSX_CONFIG=/etc/quant-swarm-xau/runtime.json" in text
     assert "QSX_DATA_DIR=/var/lib/quant-swarm-xau" in text
-    assert '["python3", "-m", "python_swarm.runtime_app", "--mode", "check"]' in text
+    assert 'CMD ["./deployment/start.sh", "--check"]' in text
+    assert "deployment/config.json" not in text
     assert "QSX_STATE_DIR" not in text
     assert "QSX_LOG_DIR" not in text
 
 
 def test_production_dependencies_are_exactly_pinned_and_hash_locked():
-    lock_path = ROOT / "python_swarm" / "requirements.lock"
+    lock_path = ROOT / "python_swarm" / "requirements-runtime-py312.lock"
     lock = lock_path.read_text(encoding="utf-8")
     logical_requirements: list[str] = []
     current: list[str] = []
@@ -317,10 +320,14 @@ def test_production_dependencies_are_exactly_pinned_and_hash_locked():
 
     docker = (ROOT / "Dockerfile").read_text(encoding="utf-8")
     setup = (ROOT / "server_setup.sh").read_text(encoding="utf-8")
-    assert "requirements.lock" in docker
+    assert "requirements-runtime-py312.lock" in docker
     assert "--require-hashes" in docker
-    assert "requirements.lock" in setup
+    assert "requirements-runtime-py312.lock" in setup
     assert "--require-hashes" in setup
+    assert "--no-index" in docker
+    assert "--no-index" in setup
+    assert "--only-binary=:all:" in docker
+    assert "--only-binary=:all:" in setup
 
 
 def test_operator_launch_files_contain_no_retired_runtime():

@@ -122,7 +122,7 @@ def snapshot(**changes) -> CanonicalMarketSnapshot:
         "snapshot_id": "broker-snapshot-0001",
         "symbol": "XAUUSD",
         "captured_at_ms": CAPTURED_MS,
-        "mode": DataMode.LIVE,
+        "mode": DataMode.DEMO,
         "market_source": MarketSource.BROKER,
         "bid": Decimal("2000.0"),
         "ask": Decimal("2000.1"),
@@ -163,6 +163,12 @@ def test_pipeline_module_has_no_io_random_or_wall_clock_imports():
     )
 
 
+def test_live_data_mode_is_not_exposed_by_this_release():
+    with pytest.raises(ValueError):
+        DataMode("live")
+    assert {mode.value for mode in DataMode}.isdisjoint({"live"})
+
+
 def test_snapshot_is_defensively_immutable_and_uses_broker_time_for_session():
     bars = list(make_bars(60, 3_600_000))
     market = snapshot(h1=bars)
@@ -174,7 +180,7 @@ def test_snapshot_is_defensively_immutable_and_uses_broker_time_for_session():
         market.bid = Decimal("1")
 
 
-@pytest.mark.parametrize("mode", [DataMode.SHADOW, DataMode.DEMO, DataMode.LIVE])
+@pytest.mark.parametrize("mode", [DataMode.SHADOW, DataMode.DEMO])
 @pytest.mark.parametrize("source", [MarketSource.REPLAY, MarketSource.SUPPLIED_TEST])
 def test_broker_modes_reject_non_broker_market_sources(mode, source):
     with pytest.raises(ValueError, match="broker-derived"):
@@ -442,7 +448,7 @@ def test_macro_provider_adapter_never_invents_sentiment():
         at_ms=CAPTURED_MS,
     )
 
-    assert context.healthy_covered_at(CAPTURED_MS, DataMode.LIVE)
+    assert context.healthy_covered_at(CAPTURED_MS, DataMode.DEMO)
     assert context.sentiment is None
     result = CanonicalStrategyPipeline().evaluate(snapshot(macro=context))
     assert evaluation(result, 10).signal is None
@@ -470,7 +476,7 @@ def test_intermarket_provider_adapter_requires_two_monotonic_snapshots():
         current,
         source_kind=EvidenceSource.HTTP,
     )
-    assert context.healthy_fresh_at(CAPTURED_MS, DataMode.LIVE)
+    assert context.healthy_fresh_at(CAPTURED_MS, DataMode.DEMO)
 
     with pytest.raises(ValueError, match="sequences must increase"):
         intermarket_context_from_provider_snapshots(

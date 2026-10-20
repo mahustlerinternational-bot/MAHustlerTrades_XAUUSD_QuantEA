@@ -8,8 +8,7 @@
     "log_level": "INFO",
     "expected_account_id": "${QSX_EXPECTED_ACCOUNT_ID}",
     "expected_broker_server": "${QSX_EXPECTED_BROKER_SERVER}",
-    "expected_account_trade_mode": "DEMO",
-    "permit_real_account": false
+    "expected_account_trade_mode": "DEMO"
   },
   "ipc": {
     "host": "127.0.0.1",

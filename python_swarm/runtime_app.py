@@ -1384,7 +1384,6 @@ def _expected_identity(config: RuntimeConfig) -> ExpectedBrokerIdentity:
         broker_server=system.expected_broker_server,
         symbol=system.symbol,
         magic=system.magic_number,
-        allow_real_account=False,
     )
 
 

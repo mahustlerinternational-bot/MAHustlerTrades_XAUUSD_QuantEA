@@ -74,7 +74,6 @@ def make_config(tmp_path, mode: RuntimeMode) -> RuntimeConfig:
             "expected_account_id": ACCOUNT,
             "expected_broker_server": "Broker-Demo",
             "expected_account_trade_mode": "DEMO",
-            "permit_real_account": False,
         },
         "storage": {"data_dir": str(tmp_path)},
         "ipc": {"auth_secret_env": "QSX_IPC_SECRET"},
@@ -662,4 +661,3 @@ def test_agent20_failure_degrades_learning_without_interrupting_lifecycle(tmp_pa
     assert calls[:2] == ["lifecycle:position-1", "assemble"]
     assert result.lifecycle[0].trade_id == "trade-1"
     assert result.learning_status is LearningRuntimeStatus.DEGRADED
-

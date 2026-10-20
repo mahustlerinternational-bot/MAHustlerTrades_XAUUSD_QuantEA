@@ -50,17 +50,12 @@ class RuntimeClock(Protocol):
 
 @dataclass(frozen=True, slots=True)
 class ExpectedBrokerIdentity:
-    """Pinned identity the runtime is authorised to control.
-
-    ``allow_real_account`` has no permissive default.  A deployment that ever
-    enables it must still pin the exact account, server, symbol, and magic.
-    """
+    """Pinned DEMO identity the runtime is authorised to control."""
 
     account_id: str
     broker_server: str
     symbol: str
     magic: int
-    allow_real_account: bool = False
 
     def __post_init__(self) -> None:
         for name in ("account_id", "broker_server", "symbol"):
@@ -112,8 +107,8 @@ def identity_mismatches(
             mismatches.append(
                 f"{name}: expected {getattr(expected, name)!r}, got {getattr(actual, name)!r}"
             )
-    if actual.trade_mode is BrokerTradeMode.REAL and not expected.allow_real_account:
-        mismatches.append("real account is not explicitly authorised")
+    if actual.trade_mode is BrokerTradeMode.REAL:
+        mismatches.append("real accounts are unsupported")
     if actual.trade_mode is BrokerTradeMode.CONTEST:
         mismatches.append("contest accounts are not authorised")
     if require_execution_permissions:

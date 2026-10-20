@@ -1,0 +1,89 @@
+{
+  "compiler": {
+    "path": "MetaEditor64.exe",
+    "sha256": "c3ec8605f8a712bf1f9f9bab136e85254f9ebea15d5350778a113a213a27a14a",
+    "version": "5.0.0.6061"
+  },
+  "dependencies": [
+    {
+      "path": "Config/terminal.lic",
+      "sha256": "7c0d57903398395d8c69919070669320fd9453561ce1fd51edaf3b4fa73470f0"
+    },
+    {
+      "path": "MQL5/Include/Object.mqh",
+      "sha256": "dfad4fdb6d1bf47cf43fcbc2882e52979459f17a776f75f250a7c32d0623ab35"
+    },
+    {
+      "path": "MQL5/Include/StdLibErr.mqh",
+      "sha256": "04bb2c47b1b04dceb052e6dba1f85e0330c53abc602f341e2ea95ea1498ab28b"
+    },
+    {
+      "path": "MQL5/Include/Trade/DealInfo.mqh",
+      "sha256": "9d6fb4e7d8754eaee761e43943dc49cdc3a32793ee8438119d939ea7bad71880"
+    },
+    {
+      "path": "MQL5/Include/Trade/HistoryOrderInfo.mqh",
+      "sha256": "e88f6be450462a045470315887ef751a4510da65a5115325dc88542743fc52f8"
+    },
+    {
+      "path": "MQL5/Include/Trade/OrderInfo.mqh",
+      "sha256": "d0e479578ef91d2ef1b07ae63d28ae54e15cebb914dd10e5d4510c269a9ca999"
+    },
+    {
+      "path": "MQL5/Include/Trade/PositionInfo.mqh",
+      "sha256": "dd720b755c7f23dcc109fc81bcf0772b907411d545e4a1117421737bb9ff6897"
+    },
+    {
+      "path": "MQL5/Include/Trade/Trade.mqh",
+      "sha256": "96e6781624534377fe7971cba52cca3d62d1b030bc10d5e4ebf3ed8c541399ed"
+    }
+  ],
+  "expected_includes": [
+    "MQL5/Include/Object.mqh",
+    "MQL5/Include/StdLibErr.mqh",
+    "MQL5/Include/Trade/DealInfo.mqh",
+    "MQL5/Include/Trade/HistoryOrderInfo.mqh",
+    "MQL5/Include/Trade/OrderInfo.mqh",
+    "MQL5/Include/Trade/PositionInfo.mqh",
+    "MQL5/Include/Trade/Trade.mqh"
+  ],
+  "expected_process_exit_code": 1,
+  "host_tools": [
+    {
+      "path": "/usr/bin/Xvfb",
+      "sha256": "1253e0dadfd57e1fe6784011e304fd8e36c3194858132a129c10178cabffc035"
+    },
+    {
+      "path": "/usr/bin/bwrap",
+      "sha256": "0abea81db798ebf6b4742ac0664802d97521547a353c2a0dbdc21d76cbbfd2c0"
+    },
+    {
+      "path": "/usr/bin/timeout",
+      "sha256": "48893b0fb21436b54619db80486e83ef39dfccaf1aefe83dfa00c02d6146e8c0"
+    },
+    {
+      "path": "/usr/bin/wine64",
+      "sha256": "acb8304c53732ed4a764c8dddd9ef1af9d94e63e3a18b2342d0ca6bf739d5d1b"
+    },
+    {
+      "path": "/usr/bin/wineboot",
+      "sha256": "3e3fa1050f95b39cf90e21f03e6e8cda4415a480db696719ef137e3c7a86bb54"
+    },
+    {
+      "path": "/usr/bin/xvfb-run",
+      "sha256": "97e86a102eee7212bfa3bf87d452b27dd4f16ef6e68658eeae20bca63db2ceee"
+    },
+    {
+      "path": "/usr/lib/x86_64-linux-gnu/wine/wine",
+      "sha256": "38ce5fdb5ffa45fffe5ccd25100c0bb0b795853159e5fd05e80a70bf9081ae9c"
+    },
+    {
+      "path": "/usr/lib/x86_64-linux-gnu/wine/wineserver",
+      "sha256": "2cd22f9a7e9b39382d26fb3eb86fc3f498f222232f712bf50c212c81ba1c9c78"
+    }
+  ],
+  "minimum_ex5_bytes": 65536,
+  "schema_version": 1,
+  "source_path": "mql5_ea/QuantSwarmXAU.mq5",
+  "wine_version": "wine-10.0 (Ubuntu 10.0~repack-12ubuntu1)"
+}

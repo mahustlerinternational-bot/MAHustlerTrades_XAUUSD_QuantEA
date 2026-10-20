@@ -22,6 +22,7 @@ logs/
 var/
 build_evidence/
 release_output/
+wheelhouse/
 backups/
 python_swarm/Qwen Studio_files/
 mql5_ea/*.ex5

@@ -285,8 +285,8 @@ def test_intermarket_validation_failure_is_error_not_neutral_health():
     assert snapshot.error == "ValueError: provider poll failed"
 
 
-def test_simulation_sources_are_impossible_in_live_mode(monkeypatch):
-    monkeypatch.setenv("QSX_MODE", "live")
+def test_simulation_sources_are_impossible_in_demo_mode(monkeypatch):
+    monkeypatch.setenv("QSX_MODE", "demo")
 
     with pytest.raises(ProviderSafetyError):
         SimulationProvider("macro", {"events": []})

@@ -1,7 +1,7 @@
 """Strict, side-effect-free runtime configuration for QUANT-SWARM-XAU.
 
 Configuration parsing is intentionally fail closed: the execution mode and
-schema version are mandatory, unknown keys are rejected, live risk limits are
+schema version are mandatory, unknown keys are rejected, broker risk limits are
 bounded, and provider-dependent agents cannot be enabled without a genuine data
 source.  Reading a file is an explicit function call; importing this module does
 not access the filesystem or environment.
@@ -53,27 +53,22 @@ class ConfigError(ValueError):
 
 
 class RuntimeMode(str, Enum):
-    """Explicit runtime capability modes; there is no implicit live default."""
+    """Explicit RC2 capability modes; real-capital mode is not compiled in."""
 
     CHECK = "check"
     SHADOW = "shadow"
     DEMO = "demo"
-    LIVE = "live"
     SIMULATION = "simulation"
     REPLAY = "replay"
     TEST = "test"
 
     @property
     def may_connect_broker(self) -> bool:
-        return self in {RuntimeMode.SHADOW, RuntimeMode.DEMO, RuntimeMode.LIVE}
+        return self in {RuntimeMode.SHADOW, RuntimeMode.DEMO}
 
     @property
     def may_execute_orders(self) -> bool:
-        return self in {RuntimeMode.DEMO, RuntimeMode.LIVE}
-
-    @property
-    def requires_real_account(self) -> bool:
-        return self is RuntimeMode.LIVE
+        return self is RuntimeMode.DEMO
 
     @property
     def may_use_synthetic_data(self) -> bool:
@@ -102,8 +97,6 @@ class SystemSettings:
     expected_account_id: str | None = None
     expected_broker_server: str | None = None
     expected_account_trade_mode: AccountTradeMode | None = None
-    permit_real_account: bool = False
-    real_authorization_env: str = "QSX_REAL_ACCOUNT_AUTHORIZATION"
 
 
 @dataclass(frozen=True, slots=True)
@@ -137,7 +130,7 @@ class EntrySettings:
     """Runtime-owned entry/execution envelope limits.
 
     These values were previously implicit policy defaults, which made an
-    effective configuration hash insufficient to reproduce a live decision.
+    effective configuration hash insufficient to reproduce a broker decision.
     They are now part of the strict schema-v2 semantic configuration.
     """
 
@@ -264,7 +257,9 @@ class RuntimeConfig:
             )
 
         if "mode" not in data:
-            raise ConfigError("config.mode is required; live mode is never implicit")
+            raise ConfigError(
+                "config.mode is required; broker capability is never implicit"
+            )
         mode = _enum(RuntimeMode, data["mode"], "config.mode")
 
         config = cls(
@@ -317,8 +312,6 @@ def _parse_system(raw: Any) -> SystemSettings:
             "expected_account_id",
             "expected_broker_server",
             "expected_account_trade_mode",
-            "permit_real_account",
-            "real_authorization_env",
         },
         "config.system",
     )
@@ -352,18 +345,6 @@ def _parse_system(raw: Any) -> SystemSettings:
             "config.system.expected_account_trade_mode",
         )
     )
-    permit_real = _boolean(
-        data.get("permit_real_account", False),
-        "config.system.permit_real_account",
-    )
-    authorization_env = _string(
-        data.get("real_authorization_env", "QSX_REAL_ACCOUNT_AUTHORIZATION"),
-        "config.system.real_authorization_env",
-    )
-    if not _ENV_NAME.fullmatch(authorization_env):
-        raise ConfigError(
-            "config.system.real_authorization_env must be an environment variable name"
-        )
     for value, path in (
         (account, "config.system.expected_account_id"),
         (broker_server, "config.system.expected_broker_server"),
@@ -378,8 +359,6 @@ def _parse_system(raw: Any) -> SystemSettings:
         expected_account_id=account,
         expected_broker_server=broker_server,
         expected_account_trade_mode=trade_mode,
-        permit_real_account=permit_real,
-        real_authorization_env=authorization_env,
     )
 
 
@@ -698,28 +677,11 @@ def _validate_runtime(config: RuntimeConfig, environ: Mapping[str, str]) -> None
                 "broker modes require auth_secret_env with at least 32 UTF-8 bytes"
             )
 
-        if config.mode in {RuntimeMode.SHADOW, RuntimeMode.DEMO}:
-            if system.expected_account_trade_mode is not AccountTradeMode.DEMO:
-                raise ConfigError(f"{config.mode.value} mode requires a pinned DEMO account")
-            if system.permit_real_account:
-                raise ConfigError(
-                    f"{config.mode.value} mode cannot permit a real account"
-                )
-        elif config.mode is RuntimeMode.LIVE:
-            if system.expected_account_trade_mode is not AccountTradeMode.REAL:
-                raise ConfigError("live mode requires a pinned REAL account")
-            if not system.permit_real_account:
-                raise ConfigError(
-                    "live mode requires config.system.permit_real_account=true"
-                )
-            expected_authorization = (
-                f"AUTHORIZE_REAL_ACCOUNT:{system.expected_account_id}:"
-                f"{system.expected_broker_server}"
+        if system.expected_account_trade_mode is not AccountTradeMode.DEMO:
+            raise ConfigError(
+                f"{config.mode.value} mode requires a pinned DEMO account; "
+                "REAL accounts are unsupported by this release"
             )
-            if environ.get(system.real_authorization_env) != expected_authorization:
-                raise ConfigError(
-                    "live mode requires an exact account-bound real-capital authorization token"
-                )
 
     if config.ipc.host != "127.0.0.1":
         raise ConfigError("config.ipc.host must be exactly 127.0.0.1")

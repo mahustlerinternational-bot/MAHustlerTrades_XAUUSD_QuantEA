@@ -7,10 +7,13 @@ orchestrators, or a real-account mode.
 
 ## Developer preflight
 
-Run `bash server_setup.sh`, then explicitly run
-`bash deployment/start.sh --check`. The committed `config.json` is a
-non-broker CHECK profile. A writable checkout is deliberately rejected by
+Verify the signed CPython 3.12 wheelhouse, set `QSX_WHEELHOUSE`, and run
+`bash server_setup.sh`. The setup preflight explicitly selects
+`config.check.example.json`; `deployment/start.sh` itself never guesses a
+configuration. A writable checkout is deliberately rejected by
 broker-connected modes and must not be “fixed” by changing its permissions.
+Build and validate each isolated dependency lane using
+[the offline dependency procedure](../docs/DEPENDENCY_REPRODUCIBILITY.md).
 
 ## Installed SHADOW layout
 

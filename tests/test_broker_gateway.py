@@ -1,5 +1,5 @@
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from decimal import Decimal
 from pathlib import Path
 
@@ -164,6 +164,10 @@ def test_gateway_configuration_defaults_to_non_executing_shadow():
 
 
 def test_gateway_configuration_rejects_real_accounts_in_this_release():
+    assert "allow_real_account" not in {
+        field.name for field in fields(ExpectedBrokerIdentity)
+    }
+
     with pytest.raises(ValueError, match="REAL accounts are not supported"):
         GatewayConfig(
             auth_token=TOKEN,
@@ -173,25 +177,20 @@ def test_gateway_configuration_rejects_real_accounts_in_this_release():
                 broker_server="Broker-Real",
                 symbol="XAUUSD",
                 magic=202412,
-                allow_real_account=True,
             ),
             expected_trade_mode=BrokerTradeMode.REAL,
             session_mode=BrokerSessionMode.DEMO,
         )
 
-    with pytest.raises(ValueError, match="REAL accounts are not supported"):
-        GatewayConfig(
-            auth_token=TOKEN,
-            config_hash="cfg-1",
-            expected=ExpectedBrokerIdentity(
-                account_id="123456",
-                broker_server="Broker-Demo",
-                symbol="XAUUSD",
-                magic=202412,
-                allow_real_account=True,
-            ),
-            expected_trade_mode=BrokerTradeMode.DEMO,
-            session_mode=BrokerSessionMode.DEMO,
+    with pytest.raises(TypeError, match="allow_real_account"):
+        ExpectedBrokerIdentity(
+            **{
+                "account_id": "123456",
+                "broker_server": "Broker-Demo",
+                "symbol": "XAUUSD",
+                "magic": 202412,
+                "allow_real_account": True,
+            }
         )
 
 

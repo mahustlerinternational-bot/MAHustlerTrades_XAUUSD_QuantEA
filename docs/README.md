@@ -59,14 +59,16 @@ No timeout is treated as a rejection. Ambiguous commands become `UNKNOWN` and bl
 
 Configuration uses schema version 2.
 
-The operational launcher exposes only `CHECK`, `SHADOW`, and `DEMO`. The
-configuration model retains `LIVE` as a future account-safety contract, but
-this remediation release has no real-account launch command.
+The operational launcher and RC2 configuration schema expose only `CHECK`,
+`SHADOW`, and `DEMO` broker capabilities. `LIVE` and its real-account
+authorization fields are absent from this release.
 
 - `CHECK`: validates configuration and local prerequisites without connecting or trading.
 - `SHADOW`: accepts demo-account market evidence but cannot send broker commands.
 - `DEMO`: may send commands only to the configured and authenticated demo account after synchronization.
-- `LIVE`: schema-reserved and operationally inaccessible until a separately reviewed release completes every promotion requirement.
+
+A future real-capital mode would require a separately designed, reviewed, and
+promoted release; it cannot be enabled by changing this release's configuration.
 
 The supported transport is a single authenticated loopback TCP connection.
 Account ID, broker server, account mode, symbol, magic number, protocol version,
@@ -116,13 +118,22 @@ Actual R is derived from all authoritative closing deals, including commission, 
 
 ## Development verification
 
-The checked-in virtual environment may not be portable. In the current repair workspace the deterministic test invocation is:
+Use a fresh CPython 3.12 virtual environment installed only from the verified
+test wheelhouse and `requirements-test-py312.lock`. The signed lane build,
+verification, transactional setup, and offline Docker procedure is specified
+in [DEPENDENCY_REPRODUCIBILITY.md](DEPENDENCY_REPRODUCIBILITY.md). The
+canonical evidence invocation is:
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 \
-PYTHONPATH=python_swarm:.venv/lib/python3.14/site-packages \
-/usr/bin/python3.14 -m pytest -q -W error
+PYTHONHASHSEED=0 TZ=UTC LC_ALL=C.UTF-8 \
+PYTHONNOUSERSITE=1 PYTHONDONTWRITEBYTECODE=1 \
+.venv-py312/bin/python -m pytest -q -W error -p no:cacheprovider
 ```
+
+A separately locked CPython 3.14 environment may run the same suite as
+forward-compatibility evidence. It is not a broker-runtime interpreter, and
+packages from one interpreter must never be injected into another with
+`PYTHONPATH`.
 
 Before any demo AutoTrading session, also require:
 

@@ -33,7 +33,6 @@ input int    InpReconnectSec         = 5;
 input int    InpMaxFrameBytes        = 16384;
 input int    InpMaxCommandRetries    = 3;
 input int    InpDealReplayLookbackDays = 90;
-input bool   InpPermitRealAccount    = false;    // Requires server approval too
 input QSX_SESSION_MODE InpSessionMode          = QSX_SESSION_SHADOW;
 input bool   InpEmergencyStop        = true;
 input string InpApproveRiskDayHighWaterUtcDay = ""; // Exact UTC day; required once per account migration
@@ -2212,9 +2211,9 @@ bool TradingIdentityReady(string &reason)
    {
       reason = "TRADING_NOT_ALLOWED"; return false;
    }
-   if(AccountTradeModeText() == "REAL" && !InpPermitRealAccount)
+   if(AccountTradeModeText() == "REAL")
    {
-      reason = "REAL_ACCOUNT_LOCAL_BLOCK"; return false;
+      reason = "REAL_ACCOUNT_UNSUPPORTED"; return false;
    }
    return true;
 }
@@ -2949,7 +2948,7 @@ void HandleHelloAck(const string &json)
                      expectedSymbol == _Symbol && expectedMagic == InpMagicNumber &&
                      configHash == InpConfigHash &&
                      ParseDealCursor(peerDealCursor, peerCursorTime, peerCursorDeal);
-   bool modeOk = AccountTradeModeText() != "REAL" || (allowReal && InpPermitRealAccount);
+   bool modeOk = AccountTradeModeText() != "REAL" && !allowReal;
    bool sessionModeOk = expectedSessionMode == SessionModeText();
    bool permissionOk = IsObservationOnlySession() ||
                        (AccountInfoInteger(ACCOUNT_TRADE_ALLOWED) &&
@@ -3158,9 +3157,9 @@ int OnInit()
       Print("[QSX4] Invalid secure configuration; EA will not start");
       return INIT_PARAMETERS_INCORRECT;
    }
-   if(AccountTradeModeText() == "REAL" && !InpPermitRealAccount)
+   if(AccountTradeModeText() == "REAL")
    {
-      Print("[QSX4] Real account blocked locally");
+      Print("[QSX4] Real accounts are unsupported by this release");
       return INIT_PARAMETERS_INCORRECT;
    }
    g_Trade.SetExpertMagicNumber(InpMagicNumber);

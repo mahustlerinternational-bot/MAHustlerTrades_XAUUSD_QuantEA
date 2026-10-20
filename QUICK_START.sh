@@ -7,10 +7,13 @@ cat <<'EOF'
 QUANT-SWARM-XAU safe quick start
 
 1. Revoke any credentials that were previously stored in this project.
-2. Run: bash server_setup.sh
+2. Follow docs/DEPENDENCY_REPRODUCIBILITY.md, verify the signed CPython 3.12
+   wheelhouse, set QSX_WHEELHOUSE to its lane directory, then run:
+     bash server_setup.sh
 3. Read docs/CANONICAL_ARCHITECTURE.md and docs/README.md.
 4. Keep MT5 AutoTrading disabled and run the non-trading check:
-     bash deployment/start.sh --check
+     QSX_CONFIG="$PWD/deployment/config.check.example.json" \
+       bash deployment/start.sh --check
 5. Package a reviewed release under a root-owned, service-non-writable tree.
    Derive the schema-v2 runtime JSON from config.shadow.example.json, put it in
    a root-owned configuration directory, and set QSX_CONFIG and QSX_DATA_DIR
